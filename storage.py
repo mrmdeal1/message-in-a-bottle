@@ -37,19 +37,43 @@ def init_db():
     return True
 
 
-def month_key_for(bottle):
+def _launch_month_from_bottle(bottle):
+    launch_month = bottle.get("launch_month_key")
+    if launch_month:
+        return launch_month
+
+    for event in bottle.get("journey_history", []):
+        if event.get("event") == "launched" and event.get("time"):
+            launch_month = datetime.fromisoformat(event["time"]).strftime("%Y-%m")
+            bottle["launch_month_key"] = launch_month
+            return launch_month
+
     value = bottle.get("current_time")
     if value:
-        return datetime.fromisoformat(value).strftime("%Y-%m")
-    return datetime.now(timezone.utc).strftime("%Y-%m")
+        launch_month = datetime.fromisoformat(value).strftime("%Y-%m")
+    else:
+        launch_month = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    bottle["launch_month_key"] = launch_month
+    return launch_month
+
+
+def month_key_for(bottle):
+    storage_month = bottle.get("_storage_month_key")
+    if storage_month:
+        return storage_month
+    return _launch_month_from_bottle(bottle)
 
 
 def account_id_for(bottle):
     return bottle.get("_storage_account_id") or bottle.get("sender_id") or "demo-account"
 
 
-def attach_account(bottle, account_id):
+def attach_account(bottle, account_id, month_key=None):
     bottle["_storage_account_id"] = account_id
+    if month_key:
+        bottle["_storage_month_key"] = month_key
+        bottle.setdefault("launch_month_key", month_key)
     return bottle
 
 
@@ -64,6 +88,8 @@ def save_bottle(bottle):
 
     state = dict(bottle)
     state.pop("_storage_account_id", None)
+    state.pop("_storage_month_key", None)
+    state.setdefault("launch_month_key", month_key)
 
     with _connect() as conn:
         with conn.cursor() as cur:
@@ -98,27 +124,37 @@ def load_bottle(account_id=None, month_key=None):
 
     account_id = account_id or "demo-account"
 
-    if month_key is None:
-        month_key = datetime.now(timezone.utc).strftime("%Y-%m")
-
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT state
-                FROM bottles
-                WHERE account_id = %s
-                  AND month_key = %s
-                """,
-                (account_id, month_key),
-            )
+            if month_key is None:
+                cur.execute(
+                    """
+                    SELECT state, month_key
+                    FROM bottles
+                    WHERE account_id = %s
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """,
+                    (account_id,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT state, month_key
+                    FROM bottles
+                    WHERE account_id = %s
+                      AND month_key = %s
+                    """,
+                    (account_id, month_key),
+                )
             row = cur.fetchone()
 
     if row is None:
         return None
 
     bottle = row[0]
-    attach_account(bottle, account_id)
+    stored_month_key = row[1]
+    attach_account(bottle, account_id, stored_month_key)
     return bottle
 
 
