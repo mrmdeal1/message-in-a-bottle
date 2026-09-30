@@ -105,6 +105,31 @@ def launch_demo():
     }
 
 
+@app.post("/api/test/reset-demo")
+def reset_demo():
+    account_id = "demo-account"
+    start_time = "2026-09-20T00:00:00+00:00"
+
+    bottle = engine.create_bottle(
+        29.0,
+        -88.0,
+        start_time=start_time,
+        sender_id="mickey",
+        message="My first bottle is going into the Gulf of Mexico.",
+    )
+    storage.attach_account(bottle, account_id)
+    storage.save_bottle(bottle)
+
+    return {
+        "reset": True,
+        "bottle_id": bottle["bottle_id"],
+        "status": bottle["status"],
+        "current_time": bottle.get("current_time"),
+        "eligible_after": bottle["eligible_after"],
+        "journey_areas": bottle["journey_areas"],
+    }
+
+
 @app.post("/api/test/advance-demo")
 def advance_demo():
     account_id = "demo-account"
@@ -117,8 +142,6 @@ def advance_demo():
         )
 
     try:
-        # Demo mode advances one full day with one Copernicus lookup.
-        # Production can still use smaller steps for finer-grained tracking.
         result = engine.advance_bottle(
             bottle,
             total_hours=24,
