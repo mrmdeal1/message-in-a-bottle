@@ -34,6 +34,15 @@ def bottle_quadrant(storm_lat, storm_lon, bottle_lat, bottle_lon):
 _storm_cache = None
 
 
+def _naive_utc_timestamp(value):
+    ts = pd.Timestamp(value)
+
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC").tz_localize(None)
+
+    return ts
+
+
 def load_storms():
     global _storm_cache
 
@@ -59,7 +68,7 @@ def load_storms():
 def storm_at_bottle(bottle_lat, bottle_lon, bottle_time):
     data = load_storms()
 
-    target_time = pd.Timestamp(bottle_time)
+    target_time = _naive_utc_timestamp(bottle_time)
 
     nearby_time = data[
         (data["storm_time"] - target_time).abs()
@@ -124,7 +133,7 @@ def storm_at_bottle(bottle_lat, bottle_lon, bottle_time):
 
 def storm_level_for_bottle(bottle_lat, bottle_lon, bottle_time):
     data = load_storms()
-    target_time = pd.Timestamp(bottle_time)
+    target_time = _naive_utc_timestamp(bottle_time)
 
     if (
         target_time < data["storm_time"].min()
