@@ -5,7 +5,7 @@ import sys
 
 from fastapi import FastAPI, HTTPException
 
-app = FastAPI(title="Message in a Bottle Current Worker", version="0.3.0")
+app = FastAPI(title="Message in a Bottle Current Worker", version="0.3.1")
 
 
 @app.get("/health")
@@ -77,7 +77,7 @@ def annual(bottle: dict):
             input=json.dumps(bottle),
             capture_output=True,
             text=True,
-            timeout=240,
+            timeout=360,
             check=True,
             env=env,
         )
