@@ -263,7 +263,7 @@ def advance_year():
     )
 
     try:
-        with urlopen(request, timeout=250) as response:
+        with urlopen(request, timeout=380) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[-1500:]
