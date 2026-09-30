@@ -1,47 +1,57 @@
-import gc
-import math
+import json
+import os
+import subprocess
+import sys
 
-try:
-    import bottle_engine as engine
-except Exception:
+if os.environ.get("MIAB_COPERNICUS_CHILD") == "1":
     engine = None
-
-
-def _move_bottle_live_safe(lat, lon, date, hours=6):
-    local_currents = engine.get_currents(lat, lon, date)
-    point = None
-
+else:
     try:
-        point = local_currents.sel(
-            latitude=lat,
-            longitude=lon,
-            method="nearest",
-        )
-        u = float(point["uo"].values.squeeze())
-        v = float(point["vo"].values.squeeze())
-    finally:
-        if point is not None:
-            del point
+        import bottle_engine as engine
+    except Exception:
+        engine = None
 
-        close = getattr(local_currents, "close", None)
-        if callable(close):
-            close()
 
-        del local_currents
-        gc.collect()
+def _move_bottle_live_isolated(lat, lon, date, hours=6):
+    env = os.environ.copy()
+    env["MIAB_COPERNICUS_CHILD"] = "1"
 
-    seconds = hours * 3600
-    east_m = u * seconds
-    north_m = v * seconds
-
-    new_lat = lat + north_m / 111320
-    new_lon = lon + east_m / (
-        111320 * math.cos(math.radians(lat))
+    result = subprocess.run(
+        [
+            sys.executable,
+            "copernicus_lookup.py",
+            str(lat),
+            str(lon),
+            str(date),
+            str(hours),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=90,
+        check=True,
+        env=env,
     )
 
-    miles = math.hypot(east_m, north_m) / 1609.344
-    return new_lat, new_lon, miles
+    payload_line = None
+    for line in reversed(result.stdout.splitlines()):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            payload_line = line
+            break
+
+    if payload_line is None:
+        raise RuntimeError(
+            "Copernicus worker returned no movement result. "
+            + result.stderr[-500:]
+        )
+
+    payload = json.loads(payload_line)
+    return (
+        float(payload["latitude"]),
+        float(payload["longitude"]),
+        float(payload["miles"]),
+    )
 
 
 if engine is not None:
-    engine.move_bottle_live = _move_bottle_live_safe
+    engine.move_bottle_live = _move_bottle_live_isolated
