@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -48,6 +48,14 @@ def load_for_account(account_id):
 
     storage.attach_account(bottle, account_id)
     return bottle
+
+
+def demo_copernicus_date(journey_time):
+    window_start = datetime(2026, 9, 20)
+    window_days = 11
+    journey_dt = datetime.fromisoformat(journey_time).replace(tzinfo=None)
+    offset = (journey_dt.date() - window_start.date()).days % window_days
+    return (window_start + timedelta(days=offset)).strftime("%Y-%m-%d")
 
 
 @app.get("/")
@@ -141,6 +149,14 @@ def advance_demo():
             detail="Demo bottle does not exist. Run /api/test/launch-demo first.",
         )
 
+    original_move = engine.move_bottle_live
+    lookup_date = demo_copernicus_date(bottle["current_time"])
+
+    def demo_move(lat, lon, _date, hours=6):
+        return original_move(lat, lon, lookup_date, hours)
+
+    engine.move_bottle_live = demo_move
+
     try:
         result = engine.advance_bottle(
             bottle,
@@ -149,6 +165,8 @@ def advance_demo():
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Advance failed: {exc}") from exc
+    finally:
+        engine.move_bottle_live = original_move
 
     storage.save_bottle(result)
 
@@ -156,6 +174,7 @@ def advance_demo():
         "bottle_id": result["bottle_id"],
         "status": result["status"],
         "current_time": result.get("current_time"),
+        "copernicus_lookup_date": lookup_date,
         "total_miles_traveled": round(result.get("total_miles_traveled", 0.0), 2),
         "journey_areas": result.get("journey_areas", []),
     }
