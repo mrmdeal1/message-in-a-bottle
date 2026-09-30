@@ -1,3 +1,4 @@
+import gc
 import json
 import math
 import sys
@@ -11,9 +12,9 @@ import bottle_engine as engine
 DATASET_ID = "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m"
 SURFACE_DEPTH = 0.49402499198913574
 HISTORICAL_YEAR = 2025
-WINDOW_DAYS = 15
-LAT_MARGIN_DEGREES = 12.0
-LON_MARGIN_DEGREES = 15.0
+WINDOW_DAYS = 7
+LAT_MARGIN_DEGREES = 2.0
+LON_MARGIN_DEGREES = 2.5
 
 
 def as_utc_iso(dt):
@@ -28,6 +29,14 @@ def clamp_lat(value):
 
 def clamp_lon(value):
     return max(-179.9, min(179.9, value))
+
+
+def close_dataset(ds):
+    if ds is not None:
+        close = getattr(ds, "close", None)
+        if callable(close):
+            close()
+    gc.collect()
 
 
 def open_window(center_lat, center_lon, start_dt):
@@ -57,7 +66,7 @@ def open_window(center_lat, center_lon, start_dt):
     return ds, end_dt, (min_lat, max_lat, min_lon, max_lon)
 
 
-def within_window(lat, lon, bounds, buffer_degrees=1.0):
+def within_window(lat, lon, bounds, buffer_degrees=0.35):
     min_lat, max_lat, min_lon, max_lon = bounds
     return (
         min_lat + buffer_degrees <= lat <= max_lat - buffer_degrees
@@ -68,8 +77,6 @@ def within_window(lat, lon, bounds, buffer_degrees=1.0):
 def main():
     bottle = json.load(sys.stdin)
 
-    # This script is intentionally isolated from persistent storage. The API
-    # saves the returned bottle only after the child process completes.
     engine.save_bottle = lambda _bottle: None
 
     original_move = engine.move_bottle_live
@@ -111,11 +118,7 @@ def main():
             )
 
             if need_new_window:
-                if ds is not None:
-                    close = getattr(ds, "close", None)
-                    if callable(close):
-                        close()
-
+                close_dataset(ds)
                 ds, window_end, window_bounds = open_window(
                     bottle["latitude"],
                     bottle["longitude"],
@@ -180,10 +183,7 @@ def main():
     finally:
         engine.move_bottle_live = original_move
         engine.storm_level_for_bottle = original_storm
-        if ds is not None:
-            close = getattr(ds, "close", None)
-            if callable(close):
-                close()
+        close_dataset(ds)
 
     new_history = bottle.get("journey_history", [])[start_history_len:]
     storm_encounters = sum(
