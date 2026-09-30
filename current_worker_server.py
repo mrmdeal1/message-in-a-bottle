@@ -5,7 +5,7 @@ import sys
 
 from fastapi import FastAPI, HTTPException
 
-app = FastAPI(title="Message in a Bottle Current Worker", version="0.2.0")
+app = FastAPI(title="Message in a Bottle Current Worker", version="0.3.0")
 
 
 @app.get("/health")
@@ -52,9 +52,6 @@ def current(lat: float, lon: float, date: str):
 
     payload = json.loads(payload_line)
 
-    # Convert the one-hour movement back into current components expected by
-    # the main API. The child computes displacement from u/v, so we recover
-    # u/v from that displacement deterministically.
     import math
 
     seconds = 3600.0
@@ -67,3 +64,46 @@ def current(lat: float, lon: float, date: str):
         "u": east_m / seconds,
         "v": north_m / seconds,
     }
+
+
+@app.post("/annual")
+def annual(bottle: dict):
+    env = os.environ.copy()
+    env["MIAB_COPERNICUS_CHILD"] = "1"
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "annual_simulator.py"],
+            input=json.dumps(bottle),
+            capture_output=True,
+            text=True,
+            timeout=240,
+            check=True,
+            env=env,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Annual simulation exceeded the worker time limit.",
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or str(exc))[-1500:]
+        raise HTTPException(
+            status_code=500,
+            detail=f"Annual simulation failed: {detail}",
+        ) from exc
+
+    payload_line = None
+    for line in reversed(result.stdout.splitlines()):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            payload_line = line
+            break
+
+    if payload_line is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Annual simulator returned no JSON result.",
+        )
+
+    return json.loads(payload_line)
