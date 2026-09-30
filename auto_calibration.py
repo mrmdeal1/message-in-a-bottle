@@ -8,6 +8,7 @@ import sys
 import types
 from datetime import datetime
 
+import numpy as np
 import xarray as xr
 
 # Production imports copernicusmarine, but local calibration reads downloaded NetCDF.
@@ -21,6 +22,7 @@ RESULT_ROOT = "local_results/auto"
 RUN_DIR = os.path.join(RESULT_ROOT, "runs")
 SUMMARY_CSV = os.path.join(RESULT_ROOT, "summary.csv")
 SURFACE_DEPTH = 0.49402499198913574
+CURRENT_FALLBACK_CELLS = 6
 
 
 def load_local_year():
@@ -51,16 +53,76 @@ def close_datasets(datasets):
 
 
 def point_current(ds, day, lat, lon):
-    point = ds.sel(
+    """Return the nearest usable current, tolerating masked coastal/shallow cells."""
+    snapshot = ds.sel(
         time=day,
         depth=SURFACE_DEPTH,
+        method="nearest",
+    )
+
+    point = snapshot.sel(
         latitude=lat,
         longitude=lon,
         method="nearest",
     )
     u = float(point["uo"].values.squeeze())
     v = float(point["vo"].values.squeeze())
-    return u, v
+
+    if math.isfinite(u) and math.isfinite(v):
+        return u, v
+
+    lat_values = np.asarray(snapshot["latitude"].values, dtype=float)
+    lon_values = np.asarray(snapshot["longitude"].values, dtype=float)
+    lat_center = int(np.abs(lat_values - lat).argmin())
+    lon_center = int(np.abs(lon_values - lon).argmin())
+
+    for radius in range(1, CURRENT_FALLBACK_CELLS + 1):
+        lat_start = max(0, lat_center - radius)
+        lat_stop = min(len(lat_values), lat_center + radius + 1)
+        lon_start = max(0, lon_center - radius)
+        lon_stop = min(len(lon_values), lon_center + radius + 1)
+
+        u_block = np.asarray(
+            snapshot["uo"].isel(
+                latitude=slice(lat_start, lat_stop),
+                longitude=slice(lon_start, lon_stop),
+            ).values,
+            dtype=float,
+        ).squeeze()
+        v_block = np.asarray(
+            snapshot["vo"].isel(
+                latitude=slice(lat_start, lat_stop),
+                longitude=slice(lon_start, lon_stop),
+            ).values,
+            dtype=float,
+        ).squeeze()
+
+        finite = np.isfinite(u_block) & np.isfinite(v_block)
+        if not np.any(finite):
+            continue
+
+        candidates = np.argwhere(finite)
+        best = None
+        best_distance = float("inf")
+        lon_scale = max(abs(math.cos(math.radians(lat))), 0.1)
+
+        for row, col in candidates:
+            global_row = lat_start + int(row)
+            global_col = lon_start + int(col)
+            candidate_lat = lat_values[global_row]
+            candidate_lon = lon_values[global_col]
+            distance = math.hypot(
+                candidate_lat - lat,
+                (candidate_lon - lon) * lon_scale,
+            )
+            if distance < best_distance:
+                best_distance = distance
+                best = (float(u_block[row, col]), float(v_block[row, col]))
+
+        if best is not None:
+            return best
+
+    return float("nan"), float("nan")
 
 
 def bounds_for_ds(ds):
@@ -182,7 +244,7 @@ def simulate_one(run_number, day_source, days):
                     u, v = point_current(source, day, move_lat, move_lon)
                     if not (math.isfinite(u) and math.isfinite(v)):
                         raise ValueError(
-                            f"No usable local current at {move_lat:.4f}, {move_lon:.4f} on {day}"
+                            f"No usable local current near {move_lat:.4f}, {move_lon:.4f} on {day}"
                         )
 
                     seconds = hours * 3600.0
