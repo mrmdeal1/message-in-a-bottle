@@ -68,6 +68,74 @@ def health():
     }
 
 
+@app.post("/api/test/launch-demo")
+def launch_demo():
+    account_id = "demo-account"
+
+    existing = load_for_account(account_id)
+    if existing is not None:
+        return {
+            "created": False,
+            "message": "Demo bottle already exists.",
+            "bottle_id": existing["bottle_id"],
+            "status": existing["status"],
+            "current_time": existing.get("current_time"),
+            "eligible_after": existing.get("eligible_after"),
+            "journey_areas": existing.get("journey_areas", []),
+        }
+
+    start_time = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    bottle = engine.create_bottle(
+        29.0,
+        -88.0,
+        start_time=start_time,
+        sender_id="mickey",
+        message="My first bottle is going into the Gulf of Mexico.",
+    )
+    storage.attach_account(bottle, account_id)
+    storage.save_bottle(bottle)
+
+    return {
+        "created": True,
+        "bottle_id": bottle["bottle_id"],
+        "status": bottle["status"],
+        "current_time": bottle.get("current_time"),
+        "eligible_after": bottle["eligible_after"],
+        "journey_areas": bottle["journey_areas"],
+    }
+
+
+@app.post("/api/test/advance-demo")
+def advance_demo():
+    account_id = "demo-account"
+    bottle = load_for_account(account_id)
+
+    if bottle is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Demo bottle does not exist. Run /api/test/launch-demo first.",
+        )
+
+    try:
+        result = engine.advance_bottle(
+            bottle,
+            total_hours=24,
+            step_hours=6,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Advance failed: {exc}") from exc
+
+    storage.save_bottle(result)
+
+    return {
+        "bottle_id": result["bottle_id"],
+        "status": result["status"],
+        "current_time": result.get("current_time"),
+        "total_miles_traveled": round(result.get("total_miles_traveled", 0.0), 2),
+        "journey_areas": result.get("journey_areas", []),
+    }
+
+
 @app.post("/api/bottle/launch")
 def launch(req: LaunchRequest):
     account_id = account_for(req.account_id or req.sender_id)
