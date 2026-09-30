@@ -117,10 +117,12 @@ def advance_demo():
         )
 
     try:
+        # Demo mode advances one full day with one Copernicus lookup.
+        # Production can still use smaller steps for finer-grained tracking.
         result = engine.advance_bottle(
             bottle,
             total_hours=24,
-            step_hours=6,
+            step_hours=24,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Advance failed: {exc}") from exc
