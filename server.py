@@ -22,6 +22,11 @@ class ActionRequest(BaseModel):
     reply_message: str | None = None
 
 
+@app.get("/")
+def root():
+    return {"ok": True, "service": "message-in-a-bottle", "version": "0.1.0"}
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "service": "message-in-a-bottle"}
