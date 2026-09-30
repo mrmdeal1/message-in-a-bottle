@@ -6,7 +6,6 @@ import os
 import random
 import sys
 import types
-from datetime import datetime
 
 import numpy as np
 import xarray as xr
@@ -25,26 +24,40 @@ SURFACE_DEPTH = 0.49402499198913574
 CURRENT_FALLBACK_CELLS = 6
 
 
+def bounds_for_ds(ds):
+    return (
+        float(ds["latitude"].min()),
+        float(ds["latitude"].max()),
+        float(ds["longitude"].min()),
+        float(ds["longitude"].max()),
+    )
+
+
+def inside(ds, lat, lon):
+    lat_min, lat_max, lon_min, lon_max = bounds_for_ds(ds)
+    return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
+
+
 def load_local_year():
     paths = sorted(glob.glob(DATA_GLOB))
     if not paths:
         raise SystemExit(f"No local current files found: {DATA_GLOB}")
 
     datasets = []
-    day_source = {}
+    day_sources = {}
 
     for path in paths:
         ds = xr.open_dataset(path)
         datasets.append((path, ds))
         for raw_time in ds["time"].values:
             day = str(raw_time)[:10]
-            day_source[day] = ds
+            day_sources.setdefault(day, []).append((path, ds))
 
-    days = sorted(day_source)
+    days = sorted(day_sources)
     if not days:
         raise SystemExit("Local current files contain no dates.")
 
-    return datasets, day_source, days
+    return datasets, day_sources, days
 
 
 def close_datasets(datasets):
@@ -53,18 +66,9 @@ def close_datasets(datasets):
 
 
 def point_current(ds, day, lat, lon):
-    """Return the nearest usable current, tolerating masked coastal/shallow cells."""
-    snapshot = ds.sel(
-        time=day,
-        depth=SURFACE_DEPTH,
-        method="nearest",
-    )
-
-    point = snapshot.sel(
-        latitude=lat,
-        longitude=lon,
-        method="nearest",
-    )
+    """Return nearest usable current, tolerating masked coastal/shallow cells."""
+    snapshot = ds.sel(time=day, depth=SURFACE_DEPTH, method="nearest")
+    point = snapshot.sel(latitude=lat, longitude=lon, method="nearest")
     u = float(point["uo"].values.squeeze())
     v = float(point["vo"].values.squeeze())
 
@@ -82,20 +86,14 @@ def point_current(ds, day, lat, lon):
         lon_start = max(0, lon_center - radius)
         lon_stop = min(len(lon_values), lon_center + radius + 1)
 
-        u_block = np.asarray(
-            snapshot["uo"].isel(
-                latitude=slice(lat_start, lat_stop),
-                longitude=slice(lon_start, lon_stop),
-            ).values,
-            dtype=float,
-        ).squeeze()
-        v_block = np.asarray(
-            snapshot["vo"].isel(
-                latitude=slice(lat_start, lat_stop),
-                longitude=slice(lon_start, lon_stop),
-            ).values,
-            dtype=float,
-        ).squeeze()
+        u_block = np.asarray(snapshot["uo"].isel(
+            latitude=slice(lat_start, lat_stop),
+            longitude=slice(lon_start, lon_stop),
+        ).values, dtype=float).squeeze()
+        v_block = np.asarray(snapshot["vo"].isel(
+            latitude=slice(lat_start, lat_stop),
+            longitude=slice(lon_start, lon_stop),
+        ).values, dtype=float).squeeze()
 
         finite = np.isfinite(u_block) & np.isfinite(v_block)
         if not np.any(finite):
@@ -125,40 +123,39 @@ def point_current(ds, day, lat, lon):
     return float("nan"), float("nan")
 
 
-def bounds_for_ds(ds):
-    return (
-        float(ds["latitude"].min()),
-        float(ds["latitude"].max()),
-        float(ds["longitude"].min()),
-        float(ds["longitude"].max()),
-    )
+def choose_source(day_sources, day, lat, lon):
+    """Choose a local tile containing the bottle with usable current data."""
+    for path, ds in day_sources.get(day, []):
+        if not inside(ds, lat, lon):
+            continue
+        try:
+            u, v = point_current(ds, day, lat, lon)
+        except Exception:
+            continue
+        if math.isfinite(u) and math.isfinite(v):
+            return path, ds, u, v
+    return None, None, float("nan"), float("nan")
 
 
-def inside(ds, lat, lon):
-    lat_min, lat_max, lon_min, lon_max = bounds_for_ds(ds)
-    return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
-
-
-def random_ocean_start(first_day, first_ds, max_tries=10000):
-    lat_values = first_ds["latitude"].values
-    lon_values = first_ds["longitude"].values
+def random_ocean_start(first_day, first_sources, max_tries=20000):
+    if not first_sources:
+        raise RuntimeError("No current tiles are available for the first historical day.")
 
     for _ in range(max_tries):
-        lat = float(random.choice(lat_values))
-        lon = float(random.choice(lon_values))
+        _path, ds = random.choice(first_sources)
+        lat = float(random.choice(ds["latitude"].values))
+        lon = float(random.choice(ds["longitude"].values))
 
         if engine.point_is_on_land(lat, lon):
             continue
 
         try:
-            u, v = point_current(first_ds, first_day, lat, lon)
+            u, v = point_current(ds, first_day, lat, lon)
         except Exception:
             continue
 
-        if not (math.isfinite(u) and math.isfinite(v)):
-            continue
-
-        return lat, lon
+        if math.isfinite(u) and math.isfinite(v):
+            return lat, lon
 
     raise RuntimeError("Could not find a valid random ocean starting point.")
 
@@ -167,21 +164,10 @@ def write_summary_row(record):
     os.makedirs(RESULT_ROOT, exist_ok=True)
     exists = os.path.exists(SUMMARY_CSV)
     fields = [
-        "run_number",
-        "bottle_id",
-        "start_latitude",
-        "start_longitude",
-        "end_latitude",
-        "end_longitude",
-        "stop_event",
-        "status",
-        "replayed_years",
-        "days_simulated",
-        "total_miles",
-        "coast_rolls",
-        "storm_encounters",
-        "nearest_coast_miles",
-        "regions",
+        "run_number", "bottle_id", "start_latitude", "start_longitude",
+        "end_latitude", "end_longitude", "stop_event", "status",
+        "replayed_years", "days_simulated", "total_miles", "coast_rolls",
+        "storm_encounters", "nearest_coast_miles", "regions",
     ]
     with open(SUMMARY_CSV, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
@@ -199,10 +185,9 @@ def save_run(record):
     return path
 
 
-def simulate_one(run_number, day_source, days):
+def simulate_one(run_number, day_sources, days):
     first_day = days[0]
-    first_ds = day_source[first_day]
-    start_lat, start_lon = random_ocean_start(first_day, first_ds)
+    start_lat, start_lon = random_ocean_start(first_day, day_sources[first_day])
 
     bottle = engine.create_bottle(
         start_lat,
@@ -212,9 +197,7 @@ def simulate_one(run_number, day_source, days):
         message="Automated calibration bottle",
     )
 
-    # Never touch the application's saved bottle during calibration.
     engine.save_bottle = lambda _bottle: None
-
     original_move = engine.move_bottle_live
     original_storm = engine.storm_level_for_bottle
 
@@ -232,17 +215,21 @@ def simulate_one(run_number, day_source, days):
                 if bottle.get("status") != "drifting" or bottle.get("opened"):
                     break
 
-                ds = day_source[historical_day]
                 lat = float(bottle["latitude"])
                 lon = float(bottle["longitude"])
+                _path, ds, _u, _v = choose_source(
+                    day_sources, historical_day, lat, lon
+                )
 
-                if not inside(ds, lat, lon):
+                if ds is None:
                     stop_event = "left_local_data_area"
                     break
 
-                def local_move(move_lat, move_lon, _date, hours=24, day=historical_day, source=ds):
-                    u, v = point_current(source, day, move_lat, move_lon)
-                    if not (math.isfinite(u) and math.isfinite(v)):
+                def local_move(move_lat, move_lon, _date, hours=24, day=historical_day):
+                    _p, source, u, v = choose_source(
+                        day_sources, day, move_lat, move_lon
+                    )
+                    if source is None or not (math.isfinite(u) and math.isfinite(v)):
                         raise ValueError(
                             f"No usable local current near {move_lat:.4f}, {move_lon:.4f} on {day}"
                         )
@@ -300,7 +287,7 @@ def simulate_one(run_number, day_source, days):
                 stop_event = event.get("event")
                 break
 
-    record = {
+    return {
         "run_number": run_number,
         "bottle_id": bottle.get("bottle_id"),
         "start_latitude": round(start_lat, 6),
@@ -318,7 +305,6 @@ def simulate_one(run_number, day_source, days):
         "regions": " -> ".join(bottle.get("journey_areas", [])),
         "bottle": bottle,
     }
-    return record
 
 
 def main():
@@ -327,14 +313,13 @@ def main():
         raise SystemExit("Run count must be 0 or greater. Use 0 for continuous mode.")
 
     os.makedirs(RUN_DIR, exist_ok=True)
-    datasets, day_source, days = load_local_year()
+    datasets, day_sources, days = load_local_year()
 
-    expected_start = "2025-01-01"
-    expected_end = "2025-12-31"
     print("AUTO CALIBRATION READY")
     print(f"Historical data: {days[0]} through {days[-1]} ({len(days)} days)")
+    print(f"Local current files loaded: {len(datasets)}")
 
-    if days[0] != expected_start or days[-1] != expected_end or len(days) != 365:
+    if days[0] != "2025-01-01" or days[-1] != "2025-12-31" or len(days) != 365:
         close_datasets(datasets)
         raise SystemExit(
             "Full 2025 local data is not complete yet. Need Jan 1 through Dec 31 (365 days)."
@@ -343,7 +328,7 @@ def main():
     run_number = 1
     try:
         while requested_runs == 0 or run_number <= requested_runs:
-            record = simulate_one(run_number, day_source, days)
+            record = simulate_one(run_number, day_sources, days)
             path = save_run(record)
             print(
                 f"Run {run_number}: {record['stop_event']} | "
