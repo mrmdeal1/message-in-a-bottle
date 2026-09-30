@@ -1,3 +1,4 @@
+import gc
 import math
 
 try:
@@ -8,6 +9,7 @@ except Exception:
 
 def _move_bottle_live_safe(lat, lon, date, hours=6):
     local_currents = engine.get_currents(lat, lon, date)
+    point = None
 
     try:
         point = local_currents.sel(
@@ -18,9 +20,15 @@ def _move_bottle_live_safe(lat, lon, date, hours=6):
         u = float(point["uo"].values.squeeze())
         v = float(point["vo"].values.squeeze())
     finally:
+        if point is not None:
+            del point
+
         close = getattr(local_currents, "close", None)
         if callable(close):
             close()
+
+        del local_currents
+        gc.collect()
 
     seconds = hours * 3600
     east_m = u * seconds
