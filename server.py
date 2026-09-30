@@ -164,7 +164,7 @@ def advance_demo():
     }
 
     try:
-        for _ in range(30):
+        for _ in range(5):
             if bottle.get("opened") or bottle.get("status") != "drifting":
                 break
 
