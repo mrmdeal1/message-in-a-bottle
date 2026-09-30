@@ -205,6 +205,11 @@ def advance_demo():
                 stop_event = event.get("event")
                 break
 
+    nearest_coast_miles = engine.nearest_coast_distance_miles(
+        bottle["latitude"],
+        bottle["longitude"],
+    )
+
     return {
         "bottle_id": bottle["bottle_id"],
         "status": bottle["status"],
@@ -213,6 +218,13 @@ def advance_demo():
         "stop_event": stop_event,
         "copernicus_lookup_date": last_lookup_date,
         "total_miles_traveled": round(bottle.get("total_miles_traveled", 0.0), 2),
+        "coast_roll_count": bottle.get("coast_roll_count", 0),
+        "nearest_coast_miles": (
+            round(nearest_coast_miles, 2)
+            if nearest_coast_miles is not None
+            else None
+        ),
+        "coast_armed": bottle.get("coast_armed", True),
         "journey_areas": bottle.get("journey_areas", []),
     }
 
