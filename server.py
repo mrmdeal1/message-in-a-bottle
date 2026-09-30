@@ -1,7 +1,7 @@
 import json
-import subprocess
-import sys
 from datetime import datetime, timezone, timedelta
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -11,6 +11,7 @@ import storage
 
 
 app = FastAPI(title="Message in a Bottle API", version="0.1.0")
+ANNUAL_WORKER_URL = "https://message-in-a-bottle-currents.onrender.com/annual"
 
 if storage.database_enabled():
     storage.init_db()
@@ -254,41 +255,28 @@ def advance_year():
             "journey_areas": bottle.get("journey_areas", []),
         }
 
+    request = Request(
+        ANNUAL_WORKER_URL,
+        data=json.dumps(bottle).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
     try:
-        result = subprocess.run(
-            [sys.executable, "annual_simulator.py"],
-            input=json.dumps(bottle),
-            capture_output=True,
-            text=True,
-            timeout=240,
-            check=True,
-        )
-    except subprocess.TimeoutExpired as exc:
+        with urlopen(request, timeout=250) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[-1500:]
         raise HTTPException(
-            status_code=504,
-            detail="Annual simulation exceeded the test time limit.",
+            status_code=502,
+            detail=f"Annual worker failed: {detail}",
         ) from exc
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or exc.stdout or str(exc))[-1500:]
+    except Exception as exc:
         raise HTTPException(
-            status_code=500,
-            detail=f"Annual simulation failed: {detail}",
+            status_code=502,
+            detail=f"Annual worker unavailable: {exc}",
         ) from exc
 
-    payload_line = None
-    for line in reversed(result.stdout.splitlines()):
-        line = line.strip()
-        if line.startswith("{") and line.endswith("}"):
-            payload_line = line
-            break
-
-    if payload_line is None:
-        raise HTTPException(
-            status_code=500,
-            detail="Annual simulator returned no JSON result.",
-        )
-
-    payload = json.loads(payload_line)
     bottle = payload["bottle"]
     storage.attach_account(bottle, account_id)
     storage.save_bottle(bottle)
