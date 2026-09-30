@@ -11,12 +11,58 @@ import bottle_engine as engine
 DATASET_ID = "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m"
 SURFACE_DEPTH = 0.49402499198913574
 HISTORICAL_YEAR = 2025
+WINDOW_DAYS = 15
+LAT_MARGIN_DEGREES = 12.0
+LON_MARGIN_DEGREES = 15.0
 
 
 def as_utc_iso(dt):
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.isoformat()
+
+
+def clamp_lat(value):
+    return max(-89.0, min(89.0, value))
+
+
+def clamp_lon(value):
+    return max(-179.9, min(179.9, value))
+
+
+def open_window(center_lat, center_lon, start_dt):
+    end_dt = min(
+        datetime(HISTORICAL_YEAR, 12, 31, tzinfo=timezone.utc),
+        start_dt + timedelta(days=WINDOW_DAYS - 1),
+    )
+
+    min_lat = clamp_lat(center_lat - LAT_MARGIN_DEGREES)
+    max_lat = clamp_lat(center_lat + LAT_MARGIN_DEGREES)
+    min_lon = clamp_lon(center_lon - LON_MARGIN_DEGREES)
+    max_lon = clamp_lon(center_lon + LON_MARGIN_DEGREES)
+
+    ds = copernicusmarine.open_dataset(
+        dataset_id=DATASET_ID,
+        variables=["uo", "vo"],
+        minimum_longitude=min_lon,
+        maximum_longitude=max_lon,
+        minimum_latitude=min_lat,
+        maximum_latitude=max_lat,
+        start_datetime=start_dt.strftime("%Y-%m-%d"),
+        end_datetime=end_dt.strftime("%Y-%m-%d"),
+        minimum_depth=SURFACE_DEPTH,
+        maximum_depth=SURFACE_DEPTH,
+    )
+
+    return ds, end_dt, (min_lat, max_lat, min_lon, max_lon)
+
+
+def within_window(lat, lon, bounds, buffer_degrees=1.0):
+    min_lat, max_lat, min_lon, max_lon = bounds
+    return (
+        min_lat + buffer_degrees <= lat <= max_lat - buffer_degrees
+        and min_lon + buffer_degrees <= lon <= max_lon - buffer_degrees
+    )
 
 
 def main():
@@ -26,18 +72,6 @@ def main():
     # saves the returned bottle only after the child process completes.
     engine.save_bottle = lambda _bottle: None
 
-    start_date = f"{HISTORICAL_YEAR}-01-01"
-    end_date = f"{HISTORICAL_YEAR}-12-31"
-
-    ds = copernicusmarine.open_dataset(
-        dataset_id=DATASET_ID,
-        variables=["uo", "vo"],
-        start_datetime=start_date,
-        end_datetime=end_date,
-        minimum_depth=SURFACE_DEPTH,
-        maximum_depth=SURFACE_DEPTH,
-    )
-
     original_move = engine.move_bottle_live
     original_storm = engine.storm_level_for_bottle
 
@@ -45,6 +79,11 @@ def main():
     start_coast_rolls = bottle.get("coast_roll_count", 0)
     days_advanced = 0
     stop_event = None
+    windows_opened = 0
+
+    ds = None
+    window_end = None
+    window_bounds = None
 
     try:
         for day_index in range(365):
@@ -58,6 +97,31 @@ def main():
                 tzinfo=timezone.utc,
             ) + timedelta(days=day_index)
             historical_date = historical_dt.strftime("%Y-%m-%d")
+
+            need_new_window = (
+                ds is None
+                or window_end is None
+                or historical_dt > window_end
+                or window_bounds is None
+                or not within_window(
+                    bottle["latitude"],
+                    bottle["longitude"],
+                    window_bounds,
+                )
+            )
+
+            if need_new_window:
+                if ds is not None:
+                    close = getattr(ds, "close", None)
+                    if callable(close):
+                        close()
+
+                ds, window_end, window_bounds = open_window(
+                    bottle["latitude"],
+                    bottle["longitude"],
+                    historical_dt,
+                )
+                windows_opened += 1
 
             def historical_move(lat, lon, _date, hours=24, historical_date=historical_date):
                 point = ds.sel(
@@ -116,9 +180,10 @@ def main():
     finally:
         engine.move_bottle_live = original_move
         engine.storm_level_for_bottle = original_storm
-        close = getattr(ds, "close", None)
-        if callable(close):
-            close()
+        if ds is not None:
+            close = getattr(ds, "close", None)
+            if callable(close):
+                close()
 
     new_history = bottle.get("journey_history", [])[start_history_len:]
     storm_encounters = sum(
@@ -151,6 +216,7 @@ def main():
             if nearest_coast_miles is not None
             else None
         ),
+        "windows_opened": windows_opened,
     }
 
     print(json.dumps(result))
