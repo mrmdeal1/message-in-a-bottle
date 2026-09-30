@@ -150,33 +150,70 @@ def advance_demo():
         )
 
     original_move = engine.move_bottle_live
-    lookup_date = demo_copernicus_date(bottle["current_time"])
-
-    def demo_move(lat, lon, _date, hours=6):
-        return original_move(lat, lon, lookup_date, hours)
-
-    engine.move_bottle_live = demo_move
+    start_history_len = len(bottle.get("journey_history", []))
+    days_advanced = 0
+    last_lookup_date = None
+    stop_event = None
+    meaningful_events = {
+        "storm_encountered",
+        "washed_ashore",
+        "lost_at_sea",
+        "found",
+        "opened",
+        "thrown_back",
+    }
 
     try:
-        result = engine.advance_bottle(
-            bottle,
-            total_hours=24,
-            step_hours=24,
-        )
+        for _ in range(30):
+            if bottle.get("opened") or bottle.get("status") != "drifting":
+                break
+
+            lookup_date = demo_copernicus_date(bottle["current_time"])
+            last_lookup_date = lookup_date
+
+            def demo_move(lat, lon, _date, hours=6, lookup_date=lookup_date):
+                return original_move(lat, lon, lookup_date, hours)
+
+            engine.move_bottle_live = demo_move
+            previous_history_len = len(bottle.get("journey_history", []))
+
+            bottle = engine.advance_bottle(
+                bottle,
+                total_hours=24,
+                step_hours=24,
+            )
+            days_advanced += 1
+            storage.save_bottle(bottle)
+
+            new_events = bottle.get("journey_history", [])[previous_history_len:]
+            for event in new_events:
+                if event.get("event") in meaningful_events:
+                    stop_event = event.get("event")
+                    break
+
+            if stop_event or bottle.get("status") != "drifting" or bottle.get("opened"):
+                break
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Advance failed: {exc}") from exc
     finally:
         engine.move_bottle_live = original_move
 
-    storage.save_bottle(result)
+    new_history = bottle.get("journey_history", [])[start_history_len:]
+    if stop_event is None:
+        for event in new_history:
+            if event.get("event") in meaningful_events:
+                stop_event = event.get("event")
+                break
 
     return {
-        "bottle_id": result["bottle_id"],
-        "status": result["status"],
-        "current_time": result.get("current_time"),
-        "copernicus_lookup_date": lookup_date,
-        "total_miles_traveled": round(result.get("total_miles_traveled", 0.0), 2),
-        "journey_areas": result.get("journey_areas", []),
+        "bottle_id": bottle["bottle_id"],
+        "status": bottle["status"],
+        "current_time": bottle.get("current_time"),
+        "days_advanced": days_advanced,
+        "stop_event": stop_event,
+        "copernicus_lookup_date": last_lookup_date,
+        "total_miles_traveled": round(bottle.get("total_miles_traveled", 0.0), 2),
+        "journey_areas": bottle.get("journey_areas", []),
     }
 
 
