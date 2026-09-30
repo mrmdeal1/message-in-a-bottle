@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+copernicusmarine
+pyshp
+shapely
+pandas
+xarray
