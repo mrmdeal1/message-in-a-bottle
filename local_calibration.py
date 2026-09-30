@@ -3,7 +3,6 @@ import math
 import os
 import sys
 import types
-from datetime import datetime, timezone
 
 import xarray as xr
 
@@ -18,17 +17,24 @@ import bottle_engine as engine
 
 DEFAULT_FILE = "copernicus_data/2025/currents_2025_01.nc"
 RESULT_DIR = "local_results"
+STATE_FILE = os.path.join(RESULT_DIR, "latest.json")
 SURFACE_DEPTH = 0.49402499198913574
 
 
-def as_iso(value):
-    if hasattr(value, "isoformat"):
-        return value.isoformat()
-    return str(value)
+def load_previous_bottle():
+    if not os.path.exists(STATE_FILE):
+        return None
+
+    with open(STATE_FILE, "r") as f:
+        previous = json.load(f)
+
+    return previous.get("bottle")
 
 
 def main():
-    data_file = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_FILE
+    args = [arg for arg in sys.argv[1:] if arg != "--reset"]
+    reset = "--reset" in sys.argv[1:]
+    data_file = args[0] if args else DEFAULT_FILE
 
     if not os.path.exists(data_file):
         raise SystemExit(f"Local current file not found: {data_file}")
@@ -44,14 +50,20 @@ def main():
     first_day = str(times[0])[:10]
     last_day = str(times[-1])[:10]
 
-    # Fresh calibration bottle. This does not modify the app's saved bottle.
-    bottle = engine.create_bottle(
-        29.0,
-        -88.0,
-        start_time=f"{first_day}T00:00:00+00:00",
-        sender_id="local-calibration",
-        message="Local calibration bottle",
-    )
+    previous_bottle = None if reset else load_previous_bottle()
+
+    if previous_bottle is None:
+        bottle = engine.create_bottle(
+            29.0,
+            -88.0,
+            start_time=f"{first_day}T00:00:00+00:00",
+            sender_id="local-calibration",
+            message="Local calibration bottle",
+        )
+        continued = False
+    else:
+        bottle = previous_bottle
+        continued = True
 
     engine.save_bottle = lambda _bottle: None
 
@@ -60,6 +72,10 @@ def main():
 
     start_history_len = len(bottle.get("journey_history", []))
     start_coast_rolls = bottle.get("coast_roll_count", 0)
+    starting_miles = float(bottle.get("total_miles_traveled", 0.0))
+    start_lat = float(bottle["latitude"])
+    start_lon = float(bottle["longitude"])
+
     days_advanced = 0
     stop_event = None
 
@@ -71,6 +87,7 @@ def main():
     try:
         for raw_time in times:
             if bottle.get("opened") or bottle.get("status") != "drifting":
+                stop_event = "journey_already_stopped"
                 break
 
             historical_date = str(raw_time)[:10]
@@ -154,16 +171,22 @@ def main():
         bottle["longitude"],
     )
 
+    ending_miles = float(bottle.get("total_miles_traveled", 0.0))
+
     result = {
         "data_file": data_file,
         "data_start": first_day,
         "data_end": last_day,
+        "continued_previous_bottle": continued,
         "days_advanced": days_advanced,
         "stop_event": stop_event,
         "status": bottle.get("status"),
+        "start_latitude": round(start_lat, 6),
+        "start_longitude": round(start_lon, 6),
         "latitude": round(float(bottle["latitude"]), 6),
         "longitude": round(float(bottle["longitude"]), 6),
-        "total_miles_traveled": round(float(bottle.get("total_miles_traveled", 0.0)), 2),
+        "miles_this_run": round(ending_miles - starting_miles, 2),
+        "total_miles_traveled": round(ending_miles, 2),
         "journey_areas": bottle.get("journey_areas", []),
         "coast_rolls_this_run": bottle.get("coast_roll_count", 0) - start_coast_rolls,
         "coast_roll_count": bottle.get("coast_roll_count", 0),
@@ -172,22 +195,23 @@ def main():
         "bottle": bottle,
     }
 
-    result_path = os.path.join(RESULT_DIR, "latest.json")
-    with open(result_path, "w") as f:
+    with open(STATE_FILE, "w") as f:
         json.dump(result, f, indent=2)
 
     print("LOCAL CALIBRATION COMPLETE")
     print(f"Data: {first_day} through {last_day}")
+    print(f"Continued previous bottle: {'yes' if continued else 'no'}")
     print(f"Days simulated: {days_advanced}")
     print(f"Status: {bottle.get('status')}")
     print(f"Stop event: {stop_event}")
-    print(f"Miles traveled: {result['total_miles_traveled']}")
+    print(f"Miles this run: {result['miles_this_run']}")
+    print(f"Total miles: {result['total_miles_traveled']}")
     print(f"Position: {result['latitude']}, {result['longitude']}")
     print(f"Regions: {', '.join(result['journey_areas'])}")
-    print(f"Coast rolls: {result['coast_rolls_this_run']}")
+    print(f"Coast rolls this run: {result['coast_rolls_this_run']}")
     print(f"Nearest coast: {result['nearest_coast_miles']} miles")
     print(f"Storm encounters: {storm_encounters}")
-    print(f"Full result saved to: {result_path}")
+    print(f"Full result saved to: {STATE_FILE}")
 
 
 if __name__ == "__main__":
