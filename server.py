@@ -1,3 +1,6 @@
+import json
+import subprocess
+import sys
 from datetime import datetime, timezone, timedelta
 
 from fastapi import FastAPI, HTTPException
@@ -225,6 +228,83 @@ def advance_demo():
             else None
         ),
         "coast_armed": bottle.get("coast_armed", True),
+        "journey_areas": bottle.get("journey_areas", []),
+    }
+
+
+@app.post("/api/test/advance-year")
+def advance_year():
+    account_id = "demo-account"
+    bottle = load_for_account(account_id)
+
+    if bottle is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Demo bottle does not exist. Run /api/test/launch-demo first.",
+        )
+
+    if bottle.get("opened") or bottle.get("status") != "drifting":
+        return {
+            "bottle_id": bottle["bottle_id"],
+            "status": bottle["status"],
+            "current_time": bottle.get("current_time"),
+            "days_advanced": 0,
+            "stop_event": "journey_already_stopped",
+            "total_miles_traveled": round(bottle.get("total_miles_traveled", 0.0), 2),
+            "journey_areas": bottle.get("journey_areas", []),
+        }
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "annual_simulator.py"],
+            input=json.dumps(bottle),
+            capture_output=True,
+            text=True,
+            timeout=240,
+            check=True,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Annual simulation exceeded the test time limit.",
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or str(exc))[-1500:]
+        raise HTTPException(
+            status_code=500,
+            detail=f"Annual simulation failed: {detail}",
+        ) from exc
+
+    payload_line = None
+    for line in reversed(result.stdout.splitlines()):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            payload_line = line
+            break
+
+    if payload_line is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Annual simulator returned no JSON result.",
+        )
+
+    payload = json.loads(payload_line)
+    bottle = payload["bottle"]
+    storage.attach_account(bottle, account_id)
+    storage.save_bottle(bottle)
+
+    return {
+        "bottle_id": bottle["bottle_id"],
+        "status": bottle["status"],
+        "current_time": bottle.get("current_time"),
+        "historical_current_year": payload.get("historical_year"),
+        "days_advanced": payload.get("days_advanced", 0),
+        "stop_event": payload.get("stop_event"),
+        "storm_encounters": payload.get("storm_encounters", 0),
+        "coast_rolls_this_year": payload.get("coast_rolls_this_run", 0),
+        "coast_roll_count": bottle.get("coast_roll_count", 0),
+        "nearest_coast_miles": payload.get("nearest_coast_miles"),
+        "total_miles_traveled": round(bottle.get("total_miles_traveled", 0.0), 2),
         "journey_areas": bottle.get("journey_areas", []),
     }
 
