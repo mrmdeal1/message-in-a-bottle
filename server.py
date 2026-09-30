@@ -31,6 +31,12 @@ class ActionRequest(BaseModel):
     reply_message: str | None = None
 
 
+class AdvanceRequest(BaseModel):
+    account_id: str | None = None
+    total_hours: int = 24
+    step_hours: int = 6
+
+
 def account_for(value):
     return value or "demo-account"
 
@@ -107,6 +113,46 @@ def current_bottle(account_id: str = "demo-account"):
         raise HTTPException(status_code=404, detail="No bottle exists for this account.")
 
     return engine.finder_view(bottle)
+
+
+@app.post("/api/bottle/advance")
+def advance(req: AdvanceRequest):
+    account_id = account_for(req.account_id)
+    bottle = load_for_account(account_id)
+
+    if bottle is None:
+        raise HTTPException(status_code=404, detail="No bottle exists for this account.")
+
+    if req.total_hours <= 0 or req.step_hours <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="total_hours and step_hours must be greater than zero.",
+        )
+
+    if req.total_hours % req.step_hours != 0:
+        raise HTTPException(
+            status_code=400,
+            detail="total_hours must be evenly divisible by step_hours.",
+        )
+
+    try:
+        result = engine.advance_bottle(
+            bottle,
+            total_hours=req.total_hours,
+            step_hours=req.step_hours,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Advance failed: {exc}") from exc
+
+    storage.save_bottle(result)
+
+    return {
+        "bottle_id": result["bottle_id"],
+        "status": result["status"],
+        "current_time": result.get("current_time"),
+        "total_miles_traveled": round(result.get("total_miles_traveled", 0.0), 2),
+        "journey_areas": result.get("journey_areas", []),
+    }
 
 
 @app.post("/api/bottle/encounter")
