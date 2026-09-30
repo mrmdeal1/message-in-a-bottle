@@ -12,9 +12,9 @@ import bottle_engine as engine
 DATASET_ID = "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m"
 SURFACE_DEPTH = 0.49402499198913574
 HISTORICAL_YEAR = 2025
-WINDOW_DAYS = 365
-LAT_MARGIN_DEGREES = 3.0
-LON_MARGIN_DEGREES = 4.0
+WINDOW_DAYS = 60
+LAT_MARGIN_DEGREES = 2.0
+LON_MARGIN_DEGREES = 2.5
 
 
 def as_utc_iso(dt):
@@ -66,7 +66,7 @@ def open_window(center_lat, center_lon, start_dt):
     return ds, end_dt, (min_lat, max_lat, min_lon, max_lon)
 
 
-def within_window(lat, lon, bounds, buffer_degrees=0.5):
+def within_window(lat, lon, bounds, buffer_degrees=0.35):
     min_lat, max_lat, min_lon, max_lon = bounds
     return (
         min_lat + buffer_degrees <= lat <= max_lat - buffer_degrees
