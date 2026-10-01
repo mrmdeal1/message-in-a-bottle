@@ -7,3 +7,4 @@ pandas
 xarray
 psycopg[binary]
 app-store-server-library==3.1.2
+rasterio
