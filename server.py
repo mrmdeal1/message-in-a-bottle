@@ -498,7 +498,18 @@ def current_bottle(account_id: str = "demo-account"):
     if bottle is None:
         raise HTTPException(status_code=404, detail="No bottle exists for this account.")
 
-    return engine.finder_view(bottle)
+    return {
+        "bottle_id": bottle.get("bottle_id"),
+        "status": bottle.get("status", "drifting"),
+        "current_time": bottle.get("current_time"),
+        "total_miles_traveled": round(bottle.get("total_miles_traveled", 0.0), 2),
+        "journey_areas": list(bottle.get("journey_areas", [])),
+        "storm_level": bottle.get("storm_level", "calm"),
+        "shipping_traffic": bottle.get("shipping_traffic_band", "none"),
+        "loss_reason": bottle.get("loss_reason"),
+        "destroyed": bool(bottle.get("destroyed", False)),
+        "opened": bool(bottle.get("opened", False)),
+    }
 
 
 @app.post("/api/bottle/advance")
