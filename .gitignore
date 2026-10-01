@@ -1,0 +1,32 @@
+__pycache__/
+*.pyc
+*.profraw
+
+# Local state / test output
+bottle_state.json
+entitlements_state.json
+*_results.json
+benchmark_*.json
+fast_test.json
+clean_test.json
+old_test.json
+profile.txt
+local_results/
+
+# Backups / checkpoints
+*_before_*.py
+*_backup_*.py
+*_checkpoint.py
+*_working_*.py
+
+# Large local datasets
+copernicus_data/
+shipping_data/
+components/
+source/
+
+# Downloaded archives
+*.zip
+
+# Misc
+manifest

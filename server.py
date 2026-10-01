@@ -1,10 +1,17 @@
 import json
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
+from appstoreserverlibrary.models.Environment import Environment
+from appstoreserverlibrary.signed_data_verifier import (
+    SignedDataVerifier,
+    VerificationException,
+)
 
 import bottle_engine as engine
 import storage
@@ -12,6 +19,37 @@ import storage
 
 app = FastAPI(title="Message in a Bottle API", version="0.1.0")
 ANNUAL_WORKER_URL = "https://message-in-a-bottle-currents.onrender.com/annual"
+
+APPLE_BUNDLE_ID = "com.nobudgetinternational.messageinabottle"
+APPLE_PRODUCT_ID = "message_in_a_bottle.monthly_bottle"
+APPLE_ENVIRONMENT = Environment.SANDBOX
+APPLE_APP_ID = None
+APPLE_ROOT_CERT_DIR = "apple_root_certs"
+
+def load_apple_root_certificates():
+    cert_paths = [
+        "apple_root_certs/AppleIncRootCertificate.cer",
+        "apple_root_certs/AppleRootCA-G2.cer",
+        "apple_root_certs/AppleRootCA-G3.cer",
+    ]
+
+    certificates = []
+    for cert_path in cert_paths:
+        with open(cert_path, "rb") as f:
+            certificates.append(f.read())
+
+    return certificates
+
+
+def make_apple_verifier():
+    return SignedDataVerifier(
+        load_apple_root_certificates(),
+        True,
+        APPLE_ENVIRONMENT,
+        APPLE_BUNDLE_ID,
+        APPLE_APP_ID,
+    )
+
 
 if storage.database_enabled():
     storage.init_db()
@@ -22,23 +60,35 @@ engine.save_bottle = storage.save_bottle
 class LaunchRequest(BaseModel):
     latitude: float
     longitude: float
-    account_id: str | None = None
-    sender_id: str | None = None
-    message: str | None = None
-    start_time: str | None = None
+    account_id: Optional[str] = None
+    sender_id: Optional[str] = None
+    message: Optional[str] = None
+    start_time: Optional[str] = None
 
 
 class ActionRequest(BaseModel):
-    account_id: str | None = None
-    event_time: str | None = None
-    finder_id: str | None = None
-    reply_message: str | None = None
+    account_id: Optional[str] = None
+    event_time: Optional[str] = None
+    finder_id: Optional[str] = None
+    reply_message: Optional[str] = None
 
 
 class AdvanceRequest(BaseModel):
-    account_id: str | None = None
+    account_id: Optional[str] = None
     total_hours: int = 24
     step_hours: int = 6
+
+
+class PurchaseConfirmRequest(BaseModel):
+    account_id: str
+    payment_provider: str
+    payment_reference: str
+    month_key: Optional[str] = None
+
+
+class ApplePurchaseRequest(BaseModel):
+    account_id: str
+    signed_transaction: str
 
 
 def account_for(value):
@@ -278,8 +328,14 @@ def advance_year():
         ) from exc
 
     bottle = payload["bottle"]
-    storage.attach_account(bottle, account_id)
+    storage.attach_account(bottle, account_id, month_key)
     storage.save_bottle(bottle)
+
+    if not storage.consume_entitlement(account_id, month_key):
+        raise HTTPException(
+            status_code=409,
+            detail="Bottle entitlement could not be consumed.",
+        )
 
     return {
         "bottle_id": bottle["bottle_id"],
@@ -297,6 +353,93 @@ def advance_year():
     }
 
 
+def grant_verified_purchase(
+    account_id,
+    payment_provider,
+    payment_reference,
+    month_key=None,
+):
+    if storage.database_enabled():
+        storage.init_db()
+
+    month_key = (
+        month_key
+        or datetime.now(timezone.utc).strftime("%Y-%m")
+    )
+
+    if storage.account_has_bottle(account_id, month_key):
+        raise HTTPException(
+            status_code=409,
+            detail="This account has already used its bottle for this calendar month.",
+        )
+
+    storage.grant_monthly_entitlement(
+        account_id,
+        month_key=month_key,
+        payment_provider=payment_provider,
+        payment_reference=payment_reference,
+    )
+
+    return {
+        "granted": True,
+        "account_id": account_id,
+        "month_key": month_key,
+        "payment_provider": payment_provider,
+        "entitlement_available": storage.entitlement_available(
+            account_id,
+            month_key,
+        ),
+    }
+
+
+@app.post("/api/purchase/apple")
+def confirm_apple_purchase(req: ApplePurchaseRequest):
+    try:
+        verifier = make_apple_verifier()
+        transaction = verifier.verify_and_decode_signed_transaction(
+            req.signed_transaction
+        )
+    except VerificationException:
+        raise HTTPException(
+            status_code=400,
+            detail="Apple transaction could not be verified.",
+        )
+
+    if transaction.productId != APPLE_PRODUCT_ID:
+        raise HTTPException(
+            status_code=400,
+            detail="Apple transaction is for the wrong product.",
+        )
+
+    if not transaction.transactionId:
+        raise HTTPException(
+            status_code=400,
+            detail="Apple transaction is missing a transaction ID.",
+        )
+
+    return grant_verified_purchase(
+        req.account_id,
+        "apple",
+        str(transaction.transactionId),
+    )
+
+
+@app.post("/api/test/purchase/confirm")
+def confirm_test_purchase(req: PurchaseConfirmRequest):
+    if req.payment_provider != "test":
+        raise HTTPException(
+            status_code=403,
+            detail="Test purchase endpoint only accepts payment_provider='test'.",
+        )
+
+    return grant_verified_purchase(
+        req.account_id,
+        req.payment_provider,
+        req.payment_reference,
+        req.month_key,
+    )
+
+
 @app.post("/api/bottle/launch")
 def launch(req: LaunchRequest):
     account_id = account_for(req.account_id or req.sender_id)
@@ -308,6 +451,14 @@ def launch(req: LaunchRequest):
         raise HTTPException(
             status_code=409,
             detail="This account has already used its bottle for this calendar month.",
+        )
+
+    month_key = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    if not storage.entitlement_available(account_id, month_key):
+        raise HTTPException(
+            status_code=402,
+            detail="No unused bottle entitlement is available for this calendar month.",
         )
 
     start_time = (
@@ -323,8 +474,14 @@ def launch(req: LaunchRequest):
         message=req.message,
     )
 
-    storage.attach_account(bottle, account_id)
+    storage.attach_account(bottle, account_id, month_key)
     storage.save_bottle(bottle)
+
+    if not storage.consume_entitlement(account_id, month_key):
+        raise HTTPException(
+            status_code=409,
+            detail="Bottle entitlement could not be consumed.",
+        )
 
     return {
         "bottle_id": bottle["bottle_id"],

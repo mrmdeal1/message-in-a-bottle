@@ -73,7 +73,7 @@ def annual(bottle: dict):
 
     try:
         result = subprocess.run(
-            [sys.executable, "annual_simulator.py"],
+            [sys.executable, "annual_simulator_fast.py"],
             input=json.dumps(bottle),
             capture_output=True,
             text=True,

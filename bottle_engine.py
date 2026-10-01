@@ -6,12 +6,48 @@ import os
 from datetime import datetime, timedelta
 import copernicusmarine
 import shapefile
+import rasterio
 from shapely.geometry import Point, shape
 from storm_detector import storm_level_for_bottle
 
 DATASET_ID = "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m"
 SURFACE_DEPTH = 0.49402499198913574
 SAVE_FILE = "bottle_state.json"
+
+SHIPPING_RASTER = "shipping_data/shipdensity_global.tif"
+_SHIPPING_SRC = None
+
+
+def shipping_density_at(lat, lon):
+    global _SHIPPING_SRC
+
+    if _SHIPPING_SRC is None:
+        _SHIPPING_SRC = rasterio.open(SHIPPING_RASTER)
+
+    try:
+        value = next(_SHIPPING_SRC.sample([(lon, lat)]))[0]
+    except Exception:
+        return 0
+
+    if value == _SHIPPING_SRC.nodata or value < 0:
+        return 0
+
+    return int(value)
+
+
+def shipping_traffic_multiplier(density):
+    if density <= 1000:
+        return 1.0, "none"
+    if density <= 1_000_000:
+        return 3.0, "light"
+    if density <= 6_000_000:
+        return 8.0, "moderate"
+    if density <= 20_000_000:
+        return 20.0, "heavy"
+    if density <= 30_000_000:
+        return 40.0, "very_heavy"
+
+    return 80.0, "extreme"
 
 
 MARINE_SHP = (
@@ -101,6 +137,7 @@ def create_bottle(
         "opened": False,
         "journey_areas": [broad_region(lat, lon)],
         "current_time": start_time,
+        "launch_time": start_time,
         "sender_id": sender_id,
         "message": message,
         "reply_message": None,
@@ -210,21 +247,6 @@ def move_bottle_live(lat, lon, date, hours=6):
     return new_lat, new_lon, miles
 
 
-
-
-def open_bottle(bottle, event_time=None):
-    bottle["opened"] = True
-    bottle["status"] = "journey_ended"
-
-    add_journey_event(
-        bottle,
-        "opened",
-        event_time=event_time,
-        finder_id=bottle.get("finder_id"),
-    )
-
-    save_bottle(bottle)
-    return bottle
 
 
 def public_journey_history(bottle):
@@ -448,11 +470,47 @@ def encounter_bottle(
     if bottle["status"] != "ashore":
         return "Bottle is not available to be found."
 
+    check_time = (
+        event_time
+        if event_time is not None
+        else bottle.get("current_time")
+    )
+
+    burial_due_time = bottle.get("burial_due_time")
+
+    if burial_due_time and check_time:
+        if datetime.fromisoformat(check_time) >= datetime.fromisoformat(
+            burial_due_time
+        ):
+            bottle["status"] = "lost_at_sea"
+            bottle["destroyed"] = True
+            bottle["loss_reason"] = "buried_ashore"
+            bottle["destruction_time"] = check_time
+            bottle["destruction_miles"] = bottle.get(
+                "total_miles_traveled",
+                0.0,
+            )
+
+            add_journey_event(
+                bottle,
+                "lost_at_sea",
+                event_time=check_time,
+                reason="buried_ashore",
+                ashore_time=bottle.get("ashore_time"),
+                burial_due_time=burial_due_time,
+            )
+
+            save_bottle(bottle)
+            return "Bottle was buried ashore and permanently lost."
+
     if not bottle_is_mature(
         bottle,
         check_time=event_time,
     ):
         return "Bottle is not yet eligible to be encountered."
+
+    if not bottle.get("finder_eligible", False):
+        return "Bottle remains undiscovered."
 
     if not finder_id:
         return "Finder identity is required."
@@ -558,19 +616,6 @@ def encounter_roll(chance=0.10):
     return random.random() < chance
 
 
-def maybe_encounter_bottle(bottle, chance=0.10):
-    if bottle["opened"]:
-        return bottle
-
-    if bottle["status"] != "drifting":
-        return bottle
-
-    if encounter_roll(chance):
-        bottle["status"] = "encountered"
-        bottle["encounter_count"] = bottle.get("encounter_count", 0) + 1
-        save_bottle(bottle)
-
-    return bottle
 
 def coast_roll_allowed(bottle, coast_id):
     rolled = bottle.get("rolled_coasts", [])
@@ -584,25 +629,6 @@ def record_coast_roll(bottle, coast_id):
     if coast_id not in bottle["rolled_coasts"]:
         bottle["rolled_coasts"].append(coast_id)
 
-    return bottle
-
-def maybe_encounter_new_coast(bottle, coast_id, chance=0.10):
-    if bottle["opened"]:
-        return bottle
-
-    if bottle["status"] != "drifting":
-        return bottle
-
-    if not coast_roll_allowed(bottle, coast_id):
-        return bottle
-
-    record_coast_roll(bottle, coast_id)
-
-    if encounter_roll(chance):
-        bottle["status"] = "encountered"
-        bottle["encounter_count"] = bottle.get("encounter_count", 0) + 1
-
-    save_bottle(bottle)
     return bottle
 
 import shapefile
@@ -630,27 +656,6 @@ def nearest_coast_distance_miles(lat, lon):
 
     miles_per_degree = 69.0
     return nearest_distance_degrees * miles_per_degree
-
-def maybe_encounter_new_coast(bottle, coast_id, chance=0.10, persist=True):
-    if bottle["opened"]:
-        return bottle
-
-    if bottle["status"] != "drifting":
-        return bottle
-
-    if not coast_roll_allowed(bottle, coast_id):
-        return bottle
-
-    record_coast_roll(bottle, coast_id)
-
-    if encounter_roll(chance):
-        bottle["status"] = "encountered"
-        bottle["encounter_count"] = bottle.get("encounter_count", 0) + 1
-
-    if persist:
-        save_bottle(bottle)
-
-    return bottle
 
 def nearest_coast_distance_miles(lat, lon):
     point = Point(lon, lat)
@@ -759,17 +764,6 @@ def within_encounter_range(bottle):
 
     return distance <= COAST_ENCOUNTER_MILES
 
-def maybe_encounter_near_coast(bottle, coast_id, chance=0.10, persist=True):
-    if not within_encounter_range(bottle):
-        return bottle
-
-    return maybe_encounter_new_coast(
-        bottle,
-        coast_id,
-        chance,
-        persist,
-    )
-
 def nearest_coast_id(lat, lon):
     point = Point(lon, lat)
     best_id = None
@@ -789,24 +783,6 @@ def nearest_coast_id(lat, lon):
 
     return best_id
 
-def maybe_encounter_real_coast(bottle, chance=0.10, persist=True):
-    if not within_encounter_range(bottle):
-        return bottle
-
-    coast_id = nearest_coast_id(
-        bottle["latitude"],
-        bottle["longitude"],
-    )
-
-    if coast_id is None:
-        return bottle
-
-    return maybe_encounter_new_coast(
-        bottle,
-        coast_id,
-        chance,
-        persist,
-    )
 COAST_RESET_MILES = 25.0
 
 def update_coast_arm_state(bottle):
@@ -822,43 +798,6 @@ def update_coast_arm_state(bottle):
         bottle["coast_armed"] = True
 
     return bottle
-
-def maybe_encounter_real_coast(bottle, chance=0.10, persist=True):
-    distance = nearest_coast_distance_miles(
-        bottle["latitude"],
-        bottle["longitude"],
-    )
-
-    if distance is None:
-        return bottle
-
-    if distance >= COAST_RESET_MILES:
-        bottle["coast_armed"] = True
-
-    if distance > COAST_ENCOUNTER_MILES:
-        if persist:
-            save_bottle(bottle)
-        return bottle
-
-    if not bottle.get("coast_armed", True):
-        return bottle
-
-    coast_id = nearest_coast_id(
-        bottle["latitude"],
-        bottle["longitude"],
-    )
-
-    if coast_id is None:
-        return bottle
-
-    bottle["coast_armed"] = False
-
-    return maybe_encounter_new_coast(
-        bottle,
-        coast_id,
-        chance,
-        persist,
-    )
 
 def maybe_encounter_real_coast(bottle, chance=0.10, persist=True):
     distance = nearest_coast_distance_miles(
@@ -899,6 +838,13 @@ def maybe_encounter_real_coast(bottle, chance=0.10, persist=True):
         bottle["status"] = "ashore"
         bottle["ashore_time"] = bottle.get("current_time")
         bottle["ashore_coast_id"] = coast_id
+
+        ashore_dt = datetime.fromisoformat(bottle["ashore_time"])
+        burial_days = random.randint(30, 180)
+        bottle["burial_due_time"] = (
+            ashore_dt + timedelta(days=burial_days)
+        ).isoformat()
+        bottle["finder_eligible"] = random.random() < 0.20
 
         add_journey_event(
             bottle,
@@ -1541,49 +1487,59 @@ def coast_slide_mileage_and_time(
     return total_actual, elapsed_hours
 
 
-BASE_DESTRUCTION_CHANCE = 0.00001
+BASE_DESTRUCTION_CHANCE = 0.00003
+
 
 def destruction_roll(chance):
     return random.random() < chance
 
-def maybe_destroy_bottle(
-    bottle,
-    storm_multiplier=1.0,
-    persist=True,
-):
-    if bottle.get("opened"):
-        return bottle
 
-    if bottle.get("status") != "drifting":
-        return bottle
+def bottle_age_days(bottle):
+    launch_time = bottle.get("launch_time")
 
-    final_chance = BASE_DESTRUCTION_CHANCE * storm_multiplier
-    final_chance = min(1.0, final_chance)
+    if launch_time is None:
+        history = bottle.get("journey_history", [])
+        if history:
+            launch_time = history[0].get("time")
 
-    if destruction_roll(final_chance):
-        bottle["status"] = "lost_at_sea"
-        bottle["destroyed"] = True
-        bottle["destruction_time"] = bottle.get("current_time")
-        bottle["destruction_miles"] = bottle.get(
-            "total_miles_traveled",
-            0.0,
-        )
+    if launch_time is None:
+        return 0.0
 
-    if persist:
-        save_bottle(bottle)
+    try:
+        launched = datetime.fromisoformat(launch_time)
+        current = datetime.fromisoformat(bottle["current_time"])
+        return max(0.0, (current - launched).total_seconds() / 86400.0)
+    except (ValueError, TypeError, KeyError):
+        return 0.0
 
-    return bottle
+
+def age_sinking_chance(age_days):
+    # New bottles should almost never sink from age alone.
+    # Fouling, leakage, seal deterioration and loss of buoyancy
+    # gradually increase as the bottle spends longer at sea.
+    if age_days < 90:
+        return 0.0
+    if age_days < 180:
+        return 0.000008
+    if age_days < 270:
+        return 0.000025
+    if age_days < 365:
+        return 0.000050
+
+    return 0.000100
+
 
 def storm_destruction_multiplier(storm_level):
     levels = {
         "calm": 1.0,
-        "rough": 5.0,
-        "storm": 25.0,
-        "severe": 100.0,
-        "hurricane": 500.0,
+        "rough": 8.0,
+        "storm": 40.0,
+        "severe": 160.0,
+        "hurricane": 800.0,
     }
 
     return levels.get(storm_level, 1.0)
+
 
 def maybe_destroy_bottle(
     bottle,
@@ -1596,19 +1552,74 @@ def maybe_destroy_bottle(
     if bottle.get("status") != "drifting":
         return bottle
 
-    multiplier = storm_destruction_multiplier(
-        storm_level
+    age_days = bottle_age_days(bottle)
+    sinking_chance = age_sinking_chance(age_days)
+
+    # Age-related sinking is its own physical failure mode.
+    if sinking_chance > 0.0 and destruction_roll(sinking_chance):
+        bottle["status"] = "lost_at_sea"
+        bottle["destroyed"] = True
+        bottle["loss_reason"] = "sank"
+        bottle["destruction_time"] = bottle.get("current_time")
+        bottle["destruction_miles"] = bottle.get(
+            "total_miles_traveled",
+            0.0,
+        )
+        bottle["age_days_at_loss"] = age_days
+        bottle["destruction_chance"] = sinking_chance
+
+        add_journey_event(
+            bottle,
+            "lost_at_sea",
+            reason="sank",
+            age_days=age_days,
+            destruction_chance=sinking_chance,
+        )
+
+        if persist:
+            save_bottle(bottle)
+
+        return bottle
+
+    storm_multiplier = storm_destruction_multiplier(storm_level)
+
+    shipping_density = shipping_density_at(
+        bottle["latitude"],
+        bottle["longitude"],
+    )
+    shipping_multiplier, shipping_band = shipping_traffic_multiplier(
+        shipping_density
     )
 
-    final_chance = BASE_DESTRUCTION_CHANCE * multiplier
+    combined_multiplier = storm_multiplier * shipping_multiplier
+
+    final_chance = BASE_DESTRUCTION_CHANCE * combined_multiplier
     final_chance = min(1.0, final_chance)
 
     bottle["destruction_chance"] = final_chance
     bottle["storm_level"] = storm_level
+    bottle["shipping_density"] = shipping_density
+    bottle["shipping_traffic_band"] = shipping_band
 
     if destruction_roll(final_chance):
+        if shipping_band in ("heavy", "very_heavy", "extreme"):
+            loss_reason = "shipping_traffic"
+        elif storm_level == "hurricane":
+            loss_reason = "hurricane"
+        elif storm_level == "severe":
+            loss_reason = "severe_storm"
+        elif storm_level == "storm":
+            loss_reason = "storm"
+        elif storm_level == "rough":
+            loss_reason = "rough_seas"
+        elif shipping_band in ("light", "moderate"):
+            loss_reason = "vessel_traffic"
+        else:
+            loss_reason = "open_ocean_hazard"
+
         bottle["status"] = "lost_at_sea"
         bottle["destroyed"] = True
+        bottle["loss_reason"] = loss_reason
         bottle["destruction_time"] = bottle.get("current_time")
         bottle["destruction_miles"] = bottle.get(
             "total_miles_traveled",
@@ -1618,7 +1629,11 @@ def maybe_destroy_bottle(
         add_journey_event(
             bottle,
             "lost_at_sea",
+            reason=loss_reason,
             storm_level=storm_level,
+            storm_name=bottle.get("storm_name"),
+            shipping_density=shipping_density,
+            shipping_traffic_band=shipping_band,
             destruction_chance=final_chance,
         )
 
@@ -1627,10 +1642,11 @@ def maybe_destroy_bottle(
 
     return bottle
 
+
 def update_bottle(
     bottle,
     hours=6,
-    encounter_chance=0.10,
+    encounter_chance=0.06,
     persist=True,
     storm_level=None,
 ):
@@ -1715,6 +1731,56 @@ def update_bottle(
         hours,
     )
 
+    # Extreme polar waters are intentional bottle-loss zones.
+    polar_boundary = None
+
+    if new_lat >= 82.0:
+        polar_boundary = 82.0
+    elif new_lat <= -78.0:
+        polar_boundary = -78.0
+
+    if polar_boundary is not None:
+        if new_lat != old_lat:
+            fraction = (
+                (polar_boundary - old_lat)
+                / (new_lat - old_lat)
+            )
+            fraction = max(0.0, min(1.0, fraction))
+        else:
+            fraction = 1.0
+
+        final_lon = old_lon + (
+            (new_lon - old_lon) * fraction
+        )
+
+        bottle["latitude"] = polar_boundary
+        bottle["longitude"] = final_lon
+        bottle["total_miles_traveled"] += miles * fraction
+        bottle["current_time"] = (
+            current_time
+            + timedelta(hours=hours * fraction)
+        ).isoformat()
+
+        bottle["status"] = "lost_at_sea"
+        bottle["destroyed"] = True
+        bottle["destruction_time"] = bottle["current_time"]
+        bottle["destruction_miles"] = bottle[
+            "total_miles_traveled"
+        ]
+        bottle["loss_reason"] = "polar_cap"
+
+        add_journey_event(
+            bottle,
+            "lost_at_sea",
+            reason="polar_cap",
+            polar_boundary=polar_boundary,
+        )
+
+        if persist:
+            save_bottle(bottle)
+
+        return bottle
+
     (
         path_distance,
         path_coast_id,
@@ -1763,6 +1829,13 @@ def update_bottle(
             bottle["ashore_time"] = bottle["current_time"]
             bottle["ashore_coast_id"] = path_coast_id
 
+            ashore_dt = datetime.fromisoformat(bottle["ashore_time"])
+            burial_days = random.randint(30, 180)
+            bottle["burial_due_time"] = (
+                ashore_dt + timedelta(days=burial_days)
+            ).isoformat()
+            bottle["finder_eligible"] = random.random() < 0.20
+
             add_journey_event(
                 bottle,
                 "washed_ashore",
@@ -1774,12 +1847,20 @@ def update_bottle(
 
             return bottle
 
-    land_hit = first_land_contact(
-        old_lat,
-        old_lon,
-        new_lat,
-        new_lon,
-    )
+    # Expensive exact land-intersection checks are only
+    # necessary when the movement path is actually near coast.
+    land_hit = None
+
+    if (
+        path_distance is None
+        or path_distance <= COAST_ENCOUNTER_MILES
+    ):
+        land_hit = first_land_contact(
+            old_lat,
+            old_lon,
+            new_lat,
+            new_lon,
+        )
 
     if land_hit is not None:
         hit_lat, hit_lon = land_hit
