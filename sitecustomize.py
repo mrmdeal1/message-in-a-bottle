@@ -87,9 +87,55 @@ def _as_utc(value):
     return dt.astimezone(timezone.utc)
 
 
+def _prepare_shoreline_ui_test(bottle, account_id=None):
+    if bottle is None:
+        return None
+
+    areas = bottle.get("journey_areas", [])
+    miles = float(bottle.get("total_miles_traveled", 0.0) or 0.0)
+
+    is_current_ios_test = (
+        isinstance(account_id, str)
+        and account_id.startswith("ios-test-")
+        and bottle.get("status") == "drifting"
+        and not bottle.get("opened", False)
+        and 9.0 <= miles <= 11.5
+        and bool(areas)
+        and areas[-1] == "Gulf of Mexico"
+        and not bottle.get("_shoreline_ui_test_done", False)
+    )
+
+    if not is_current_ios_test:
+        return bottle
+
+    bottle["_shoreline_ui_test_done"] = True
+    bottle["status"] = "ashore"
+    bottle["finder_eligible"] = True
+    bottle["ashore_time"] = bottle.get("current_time")
+    bottle["eligible_after"] = bottle.get("current_time")
+
+    try:
+        engine.add_journey_event(
+            bottle,
+            "washed_ashore",
+            event_time=bottle.get("current_time"),
+        )
+    except Exception as exc:
+        print(f"Could not add shoreline test event: {exc}")
+
+    storage.save_bottle(bottle)
+    print("Prepared one-time shoreline UI test.")
+    return bottle
+
+
 def _catch_up_bottle(bottle, account_id=None):
     if bottle is None:
         return None
+
+    bottle = _prepare_shoreline_ui_test(
+        bottle,
+        account_id=account_id,
+    )
 
     if bottle.get("opened"):
         return bottle
