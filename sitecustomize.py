@@ -1,6 +1,8 @@
 import json
 import math
+import time
 from datetime import datetime, timezone
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
@@ -13,18 +15,48 @@ except Exception:
 
 
 CURRENT_WORKER_URL = "https://message-in-a-bottle-currents.onrender.com/current"
-FORCE_TEST_ACCOUNT = "ios-test-E07DE60C-A24E-4D48-A757-E0E11CDBBBDD"
+CURRENT_WORKER_HEALTH_URL = "https://message-in-a-bottle-currents.onrender.com/health"
 
 
-def _move_bottle_live_remote(lat, lon, date, hours=6):
+def _wake_current_worker():
+    try:
+        with urlopen(CURRENT_WORKER_HEALTH_URL, timeout=20) as response:
+            response.read()
+    except Exception as exc:
+        print(f"Current worker wake check failed: {exc}")
+
+
+def _fetch_current_payload(lat, lon, date):
     query = urlencode({
         "lat": lat,
         "lon": lon,
         "date": date,
     })
+    url = f"{CURRENT_WORKER_URL}?{query}"
 
-    with urlopen(f"{CURRENT_WORKER_URL}?{query}", timeout=90) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    last_exc = None
+    delays = (0, 2, 5)
+
+    for attempt, delay in enumerate(delays, start=1):
+        if delay:
+            time.sleep(delay)
+
+        try:
+            with urlopen(url, timeout=90) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError) as exc:
+            last_exc = exc
+            print(
+                f"Current worker attempt {attempt} failed: {exc}"
+            )
+            if attempt == 1:
+                _wake_current_worker()
+
+    raise last_exc
+
+
+def _move_bottle_live_remote(lat, lon, date, hours=6):
+    payload = _fetch_current_payload(lat, lon, date)
 
     u = float(payload["u"])
     v = float(payload["v"])
@@ -69,24 +101,6 @@ def _catch_up_bottle(bottle, account_id=None):
 
     current_value = bottle.get("current_time")
     if not current_value:
-        return bottle
-
-    force_once = (
-        account_id == FORCE_TEST_ACCOUNT
-        and not bottle.get("_forced_six_hour_test_done", False)
-    )
-
-    if force_once:
-        try:
-            engine.advance_bottle(
-                bottle,
-                total_hours=6,
-                step_hours=6,
-            )
-            bottle["_forced_six_hour_test_done"] = True
-            storage.save_bottle(bottle)
-        except Exception as exc:
-            print(f"Forced six-hour test skipped: {exc}")
         return bottle
 
     try:
