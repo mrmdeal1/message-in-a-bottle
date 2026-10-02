@@ -510,6 +510,7 @@ def current_bottle(account_id: str = "demo-account"):
         "destroyed": bool(bottle.get("destroyed", False)),
         "opened": bool(bottle.get("opened", False)),
         "message": bottle.get("message"),
+        "reply_sent": bool(bottle.get("reply_message")),
     }
 
 
