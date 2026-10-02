@@ -287,25 +287,13 @@ def _install_beach_test_route(app):
         if bottle is None:
             found_account_id, bottle = _create_test_beach_bottle()
 
-        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-        result = engine.encounter_bottle(
-            bottle,
-            finder_id=finder_id,
-            event_time=now,
-        )
-
-        if isinstance(result, str):
-            raise HTTPException(status_code=409, detail=result)
-
-        storage.save_bottle(result)
-
         return {
             "bottle_found": True,
             "found_account_id": found_account_id,
-            "bottle_id": result.get("bottle_id"),
-            "status": result.get("status", "encountered"),
-            "total_miles_traveled": round(result.get("total_miles_traveled", 0.0), 2),
-            "journey_areas": list(result.get("journey_areas", [])),
+            "bottle_id": bottle.get("bottle_id"),
+            "status": bottle.get("status", "ashore"),
+            "total_miles_traveled": round(bottle.get("total_miles_traveled", 0.0), 2),
+            "journey_areas": list(bottle.get("journey_areas", [])),
         }
 
 
