@@ -1,7 +1,9 @@
 import json
 import math
+import os
 import time
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timezone, timedelta
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -87,55 +89,9 @@ def _as_utc(value):
     return dt.astimezone(timezone.utc)
 
 
-def _prepare_shoreline_ui_test(bottle, account_id=None):
-    if bottle is None:
-        return None
-
-    areas = bottle.get("journey_areas", [])
-    miles = float(bottle.get("total_miles_traveled", 0.0) or 0.0)
-
-    is_current_ios_test = (
-        isinstance(account_id, str)
-        and account_id.startswith("ios-test-")
-        and bottle.get("status") == "drifting"
-        and not bottle.get("opened", False)
-        and 9.0 <= miles <= 11.5
-        and bool(areas)
-        and areas[-1] == "Gulf of Mexico"
-        and not bottle.get("_shoreline_ui_test_done", False)
-    )
-
-    if not is_current_ios_test:
-        return bottle
-
-    bottle["_shoreline_ui_test_done"] = True
-    bottle["status"] = "ashore"
-    bottle["finder_eligible"] = True
-    bottle["ashore_time"] = bottle.get("current_time")
-    bottle["eligible_after"] = bottle.get("current_time")
-
-    try:
-        engine.add_journey_event(
-            bottle,
-            "washed_ashore",
-            event_time=bottle.get("current_time"),
-        )
-    except Exception as exc:
-        print(f"Could not add shoreline test event: {exc}")
-
-    storage.save_bottle(bottle)
-    print("Prepared one-time shoreline UI test.")
-    return bottle
-
-
 def _catch_up_bottle(bottle, account_id=None):
     if bottle is None:
         return None
-
-    bottle = _prepare_shoreline_ui_test(
-        bottle,
-        account_id=account_id,
-    )
 
     if bottle.get("opened"):
         return bottle
@@ -154,7 +110,6 @@ def _catch_up_bottle(bottle, account_id=None):
 
     now = datetime.now(timezone.utc)
     elapsed_hours = int((now - journey_time).total_seconds() // 3600)
-
     catchup_hours = (elapsed_hours // 6) * 6
 
     if catchup_hours <= 0:
@@ -175,6 +130,185 @@ def _catch_up_bottle(bottle, account_id=None):
     return bottle
 
 
+def _all_stored_bottles(exclude_account_id=None):
+    bottles = []
+
+    if storage is None:
+        return bottles
+
+    if storage.database_enabled():
+        try:
+            with storage._connect() as conn:
+                with conn.cursor() as cur:
+                    if exclude_account_id:
+                        cur.execute(
+                            """
+                            SELECT account_id, month_key, state
+                            FROM bottles
+                            WHERE account_id <> %s
+                            ORDER BY updated_at DESC
+                            """,
+                            (exclude_account_id,),
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            SELECT account_id, month_key, state
+                            FROM bottles
+                            ORDER BY updated_at DESC
+                            """
+                        )
+                    rows = cur.fetchall()
+
+            for account_id, month_key, state in rows:
+                bottle = dict(state)
+                storage.attach_account(bottle, account_id, month_key)
+                bottles.append((account_id, bottle))
+        except Exception as exc:
+            print(f"Beach finder database scan failed: {exc}")
+
+        return bottles
+
+    if not os.path.exists(storage.SAVE_FILE):
+        return bottles
+
+    try:
+        with open(storage.SAVE_FILE, "r") as f:
+            data = json.load(f)
+    except Exception as exc:
+        print(f"Beach finder local scan failed: {exc}")
+        return bottles
+
+    if isinstance(data, dict) and isinstance(data.get("bottles"), dict):
+        for key, bottle in data["bottles"].items():
+            try:
+                account_id, month_key = key.split("|", 1)
+            except ValueError:
+                continue
+
+            if exclude_account_id and account_id == exclude_account_id:
+                continue
+
+            bottle = dict(bottle)
+            storage.attach_account(bottle, account_id, month_key)
+            bottles.append((account_id, bottle))
+
+    return bottles
+
+
+def _eligible_test_beach_bottle(exclude_account_id=None):
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+    for account_id, bottle in _all_stored_bottles(exclude_account_id):
+        if bottle.get("status") != "ashore":
+            continue
+        if bottle.get("opened"):
+            continue
+        if not bottle.get("finder_eligible", True):
+            continue
+
+        try:
+            if not engine.bottle_is_mature(bottle, check_time=now):
+                continue
+        except Exception:
+            pass
+
+        return account_id, bottle
+
+    return None, None
+
+
+def _create_test_beach_bottle():
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    launch_time = (now - timedelta(days=3)).isoformat()
+    account_id = f"beach-test-{uuid.uuid4()}"
+
+    bottle = engine.create_bottle(
+        29.0,
+        -88.0,
+        start_time=launch_time,
+        sender_id=f"beach-sender-{uuid.uuid4()}",
+        message="I wonder who will find this bottle.",
+    )
+
+    storage.attach_account(
+        bottle,
+        account_id,
+        now.strftime("%Y-%m"),
+    )
+
+    bottle["status"] = "ashore"
+    bottle["finder_eligible"] = True
+    bottle["opened"] = False
+    bottle["ashore_time"] = (now - timedelta(hours=2)).isoformat()
+    bottle["eligible_after"] = (now - timedelta(hours=1)).isoformat()
+    bottle["current_time"] = now.isoformat()
+    bottle["total_miles_traveled"] = 42.0
+    bottle["journey_areas"] = ["Gulf of Mexico"]
+
+    try:
+        engine.add_journey_event(
+            bottle,
+            "washed_ashore",
+            event_time=bottle["ashore_time"],
+        )
+    except Exception as exc:
+        print(f"Could not add test washed-ashore event: {exc}")
+
+    storage.save_bottle(bottle)
+    return account_id, bottle
+
+
+def _install_beach_test_route(app):
+    try:
+        from fastapi import Body, HTTPException
+    except Exception:
+        return
+
+    for route in getattr(app, "routes", []):
+        if getattr(route, "path", None) == "/api/test/beach-walk/find":
+            return
+
+    @app.post("/api/test/beach-walk/find")
+    def test_beach_walk_find(payload: dict = Body(...)):
+        account_id = payload.get("account_id")
+        finder_id = payload.get("finder_id")
+
+        if not isinstance(account_id, str) or not account_id.startswith("ios-test-"):
+            raise HTTPException(status_code=403, detail="Test beach finder requires an iOS test account.")
+
+        if not finder_id:
+            raise HTTPException(status_code=400, detail="finder_id is required.")
+
+        found_account_id, bottle = _eligible_test_beach_bottle(
+            exclude_account_id=account_id
+        )
+
+        if bottle is None:
+            found_account_id, bottle = _create_test_beach_bottle()
+
+        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        result = engine.encounter_bottle(
+            bottle,
+            finder_id=finder_id,
+            event_time=now,
+        )
+
+        if isinstance(result, str):
+            raise HTTPException(status_code=409, detail=result)
+
+        storage.save_bottle(result)
+
+        return {
+            "bottle_found": True,
+            "found_account_id": found_account_id,
+            "bottle_id": result.get("bottle_id"),
+            "status": result.get("status", "encountered"),
+            "total_miles_traveled": round(result.get("total_miles_traveled", 0.0), 2),
+            "journey_areas": list(result.get("journey_areas", [])),
+        }
+
+
 if engine is not None:
     engine.move_bottle_live = _move_bottle_live_remote
     _original_shipping_density = engine.shipping_density_at
@@ -189,3 +323,17 @@ if storage is not None:
         return _catch_up_bottle(bottle, account_id=account_id)
 
     storage.load_bottle = load_bottle_with_catchup
+
+
+try:
+    from fastapi import FastAPI
+
+    _original_fastapi_init = FastAPI.__init__
+
+    def _fastapi_init_with_beach_test(self, *args, **kwargs):
+        _original_fastapi_init(self, *args, **kwargs)
+        _install_beach_test_route(self)
+
+    FastAPI.__init__ = _fastapi_init_with_beach_test
+except Exception as exc:
+    print(f"Beach test route install skipped: {exc}")
