@@ -1,7 +1,7 @@
 import json
 import math
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -16,6 +16,7 @@ except Exception:
 
 CURRENT_WORKER_URL = "https://message-in-a-bottle-currents.onrender.com/current"
 CURRENT_WORKER_HEALTH_URL = "https://message-in-a-bottle-currents.onrender.com/health"
+CATCHUP_TEST_ACCOUNT = "ios-test-E07DE60C-A24E-4D48-A757-E0E11CDBBBDD"
 
 
 def _wake_current_worker():
@@ -98,6 +99,19 @@ def _catch_up_bottle(bottle, account_id=None):
 
     if bottle.get("status") != "drifting":
         return bottle
+
+    # One-time verification for Mickey's current Xcode test bottle.
+    # This deliberately places its saved journey clock just over six hours
+    # behind real time so the normal catch-up path below must advance it once.
+    if (
+        account_id == CATCHUP_TEST_ACCOUNT
+        and not bottle.get("_automatic_catchup_test_rewind_done", False)
+    ):
+        test_time = datetime.now(timezone.utc) - timedelta(hours=6, minutes=5)
+        bottle["current_time"] = test_time.isoformat()
+        bottle["_automatic_catchup_test_rewind_done"] = True
+        storage.save_bottle(bottle)
+        print("Prepared one-time six-hour automatic catch-up test.")
 
     current_value = bottle.get("current_time")
     if not current_value:
