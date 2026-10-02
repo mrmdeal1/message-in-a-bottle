@@ -1,3 +1,4 @@
+# Deployment nudge for one-time automatic catch-up verification.
 import json
 import math
 import time
