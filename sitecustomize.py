@@ -42,6 +42,14 @@ def _move_bottle_live_remote(lat, lon, date, hours=6):
     return new_lat, new_lon, miles
 
 
+def _safe_shipping_density(lat, lon):
+    try:
+        return _original_shipping_density(lat, lon)
+    except Exception as exc:
+        print(f"Shipping density unavailable; using none: {exc}")
+        return 0
+
+
 def _as_utc(value):
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
@@ -114,6 +122,8 @@ def _catch_up_bottle(bottle, account_id=None):
 
 if engine is not None:
     engine.move_bottle_live = _move_bottle_live_remote
+    _original_shipping_density = engine.shipping_density_at
+    engine.shipping_density_at = _safe_shipping_density
 
 
 if storage is not None:
