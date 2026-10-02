@@ -13,6 +13,7 @@ except Exception:
 
 
 CURRENT_WORKER_URL = "https://message-in-a-bottle-currents.onrender.com/current"
+FORCE_TEST_ACCOUNT = "ios-test-E07DE60C-A24E-4D48-A757-E0E11CDBBBDD"
 
 
 def _move_bottle_live_remote(lat, lon, date, hours=6):
@@ -48,7 +49,7 @@ def _as_utc(value):
     return dt.astimezone(timezone.utc)
 
 
-def _catch_up_bottle(bottle):
+def _catch_up_bottle(bottle, account_id=None):
     if bottle is None:
         return None
 
@@ -60,6 +61,24 @@ def _catch_up_bottle(bottle):
 
     current_value = bottle.get("current_time")
     if not current_value:
+        return bottle
+
+    force_once = (
+        account_id == FORCE_TEST_ACCOUNT
+        and not bottle.get("_forced_six_hour_test_done", False)
+    )
+
+    if force_once:
+        try:
+            engine.advance_bottle(
+                bottle,
+                total_hours=6,
+                step_hours=6,
+            )
+            bottle["_forced_six_hour_test_done"] = True
+            storage.save_bottle(bottle)
+        except Exception as exc:
+            print(f"Forced six-hour test skipped: {exc}")
         return bottle
 
     try:
@@ -102,6 +121,6 @@ if storage is not None:
 
     def load_bottle_with_catchup(account_id=None, month_key=None):
         bottle = _original_load_bottle(account_id, month_key)
-        return _catch_up_bottle(bottle)
+        return _catch_up_bottle(bottle, account_id=account_id)
 
     storage.load_bottle = load_bottle_with_catchup
