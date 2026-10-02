@@ -1,0 +1,18 @@
+name: Advance Xcode Bottle Once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/advance_xcode_once.yml'
+
+jobs:
+  advance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Advance Mickey's Xcode bottle 24 hours
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{"account_id":"ios-test-E07DE60C-A24E-4D48-A757-E0E11CDBBBDD","total_hours":24,"step_hours":6}' \
+            https://message-in-a-bottle-c7m3.onrender.com/api/bottle/advance
