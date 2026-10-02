@@ -1,12 +1,15 @@
 import json
 import math
+from datetime import datetime, timezone
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
 try:
     import bottle_engine as engine
+    import storage
 except Exception:
     engine = None
+    storage = None
 
 
 CURRENT_WORKER_URL = "https://message-in-a-bottle-currents.onrender.com/current"
@@ -38,5 +41,67 @@ def _move_bottle_live_remote(lat, lon, date, hours=6):
     return new_lat, new_lon, miles
 
 
+def _as_utc(value):
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _catch_up_bottle(bottle):
+    if bottle is None:
+        return None
+
+    if bottle.get("opened"):
+        return bottle
+
+    if bottle.get("status") != "drifting":
+        return bottle
+
+    current_value = bottle.get("current_time")
+    if not current_value:
+        return bottle
+
+    try:
+        journey_time = _as_utc(current_value)
+    except (TypeError, ValueError):
+        return bottle
+
+    now = datetime.now(timezone.utc)
+    elapsed_hours = int((now - journey_time).total_seconds() // 3600)
+
+    # Use the engine's normal six-hour movement cadence.
+    catchup_hours = (elapsed_hours // 6) * 6
+
+    if catchup_hours <= 0:
+        return bottle
+
+    # Keep any single read bounded. Additional reads continue catching up.
+    catchup_hours = min(catchup_hours, 24)
+
+    try:
+        engine.advance_bottle(
+            bottle,
+            total_hours=catchup_hours,
+            step_hours=6,
+        )
+        storage.save_bottle(bottle)
+    except Exception as exc:
+        # Temporary ocean-data trouble should not make the bottle unreadable.
+        print(f"Bottle catch-up skipped: {exc}")
+
+    return bottle
+
+
 if engine is not None:
     engine.move_bottle_live = _move_bottle_live_remote
+
+
+if storage is not None:
+    _original_load_bottle = storage.load_bottle
+
+    def load_bottle_with_catchup(account_id=None, month_key=None):
+        bottle = _original_load_bottle(account_id, month_key)
+        return _catch_up_bottle(bottle)
+
+    storage.load_bottle = load_bottle_with_catchup
