@@ -19,6 +19,7 @@ except Exception:
 
 CURRENT_WORKER_URL = "https://message-in-a-bottle-currents.onrender.com/current"
 CURRENT_WORKER_HEALTH_URL = "https://message-in-a-bottle-currents.onrender.com/health"
+TEST_REPLY_MESSAGE = "Your bottle found me at just the right time. Thank you for sending it into the world."
 
 
 def _wake_current_worker():
@@ -337,7 +338,22 @@ if storage is not None:
 
     def load_bottle_with_catchup(account_id=None, month_key=None):
         bottle = _original_load_bottle(account_id, month_key)
-        return _catch_up_bottle(bottle, account_id=account_id)
+        bottle = _catch_up_bottle(bottle, account_id=account_id)
+
+        if (
+            bottle is not None
+            and isinstance(account_id, str)
+            and account_id.startswith("ios-test-")
+            and not bottle.get("reply_message")
+        ):
+            bottle["reply_message"] = TEST_REPLY_MESSAGE
+            bottle["reply_time"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+            try:
+                storage.save_bottle(bottle)
+            except Exception as exc:
+                print(f"Test reply save skipped: {exc}")
+
+        return bottle
 
     storage.load_bottle = load_bottle_with_catchup
 
