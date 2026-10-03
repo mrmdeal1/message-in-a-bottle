@@ -16,6 +16,12 @@ except Exception:
     engine = None
     storage = None
 
+try:
+    import auth_support
+except Exception as exc:
+    auth_support = None
+    print(f"Auth support import skipped: {exc}")
+
 
 CURRENT_WORKER_URL = "https://message-in-a-bottle-currents.onrender.com/current"
 CURRENT_WORKER_HEALTH_URL = "https://message-in-a-bottle-currents.onrender.com/health"
@@ -367,6 +373,11 @@ try:
     def _fastapi_init_with_beach_test(self, *args, **kwargs):
         _original_fastapi_init(self, *args, **kwargs)
         _install_beach_test_route(self)
+        if auth_support is not None:
+            try:
+                auth_support.install_auth_routes(self)
+            except Exception as exc:
+                print(f"Auth route install skipped: {exc}")
 
     def _fastapi_get_with_reply(self, path, *args, **kwargs):
         decorator = _original_fastapi_get(self, path, *args, **kwargs)
