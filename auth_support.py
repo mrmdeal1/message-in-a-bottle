@@ -1,0 +1,257 @@
+import base64
+import hashlib
+import hmac
+import secrets
+import uuid
+from datetime import datetime, timezone, timedelta
+
+from fastapi import Body, HTTPException
+from psycopg.errors import UniqueViolation
+
+import storage
+
+PBKDF2_ITERATIONS = 310000
+SESSION_DAYS = 30
+
+
+def _normalize_username(username):
+    return username.strip().lower()
+
+
+def _hash_password(password):
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PBKDF2_ITERATIONS,
+    )
+    return "pbkdf2_sha256${}${}${}".format(
+        PBKDF2_ITERATIONS,
+        base64.urlsafe_b64encode(salt).decode("ascii"),
+        base64.urlsafe_b64encode(digest).decode("ascii"),
+    )
+
+
+def _verify_password(password, stored):
+    try:
+        algorithm, iterations_text, salt_text, digest_text = stored.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        iterations = int(iterations_text)
+        salt = base64.urlsafe_b64decode(salt_text.encode("ascii"))
+        expected = base64.urlsafe_b64decode(digest_text.encode("ascii"))
+    except Exception:
+        return False
+
+    actual = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        iterations,
+    )
+    return hmac.compare_digest(actual, expected)
+
+
+def _token_hash(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def init_auth_db():
+    if not storage.database_enabled():
+        raise RuntimeError("Database is required for account authentication.")
+
+    with storage._connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    account_id TEXT PRIMARY KEY,
+                    username_normalized TEXT NOT NULL UNIQUE,
+                    display_username TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS account_sessions (
+                    token_hash TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL REFERENCES users(account_id) ON DELETE CASCADE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    expires_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS account_sessions_account_idx
+                ON account_sessions(account_id)
+                """
+            )
+    return True
+
+
+def _validate_credentials(username, password):
+    display_username = username.strip()
+    normalized = _normalize_username(username)
+
+    if len(display_username) < 3 or len(display_username) > 40:
+        raise HTTPException(
+            status_code=400,
+            detail="Username must be between 3 and 40 characters.",
+        )
+
+    if len(password) < 8 or len(password) > 128:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be between 8 and 128 characters.",
+        )
+
+    return display_username, normalized
+
+
+def _issue_session(account_id):
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=SESSION_DAYS)
+
+    with storage._connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM account_sessions
+                WHERE expires_at <= NOW()
+                """
+            )
+            cur.execute(
+                """
+                INSERT INTO account_sessions
+                    (token_hash, account_id, expires_at)
+                VALUES
+                    (%s, %s, %s)
+                """,
+                (_token_hash(token), account_id, expires_at),
+            )
+
+    return token, expires_at
+
+
+def register_account(username, password):
+    init_auth_db()
+    display_username, normalized = _validate_credentials(username, password)
+    account_id = str(uuid.uuid4())
+    password_hash = _hash_password(password)
+
+    try:
+        with storage._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO users
+                        (account_id, username_normalized, display_username, password_hash)
+                    VALUES
+                        (%s, %s, %s, %s)
+                    """,
+                    (account_id, normalized, display_username, password_hash),
+                )
+    except UniqueViolation as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="That username is already registered.",
+        ) from exc
+
+    token, expires_at = _issue_session(account_id)
+    return {
+        "ok": True,
+        "account_id": account_id,
+        "username": display_username,
+        "auth_token": token,
+        "expires_at": expires_at.replace(microsecond=0).isoformat(),
+    }
+
+
+def login_account(username, password):
+    init_auth_db()
+    normalized = _normalize_username(username)
+
+    with storage._connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT account_id, display_username, password_hash
+                FROM users
+                WHERE username_normalized = %s
+                """,
+                (normalized,),
+            )
+            row = cur.fetchone()
+
+    if row is None or not _verify_password(password, row[2]):
+        raise HTTPException(
+            status_code=401,
+            detail="Username or password is incorrect.",
+        )
+
+    token, expires_at = _issue_session(row[0])
+    return {
+        "ok": True,
+        "account_id": row[0],
+        "username": row[1],
+        "auth_token": token,
+        "expires_at": expires_at.replace(microsecond=0).isoformat(),
+    }
+
+
+def verify_session(token):
+    if not token:
+        return None
+
+    init_auth_db()
+    with storage._connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT account_id
+                FROM account_sessions
+                WHERE token_hash = %s
+                  AND expires_at > NOW()
+                """,
+                (_token_hash(token),),
+            )
+            row = cur.fetchone()
+
+    return row[0] if row else None
+
+
+def install_auth_routes(app):
+    existing = {getattr(route, "path", None) for route in getattr(app, "routes", [])}
+
+    if "/api/account/register" not in existing:
+        @app.post("/api/account/register")
+        def account_register(payload: dict = Body(...)):
+            username = payload.get("username")
+            password = payload.get("password")
+            if not isinstance(username, str) or not isinstance(password, str):
+                raise HTTPException(status_code=400, detail="Username and password are required.")
+            return register_account(username, password)
+
+    if "/api/account/login" not in existing:
+        @app.post("/api/account/login")
+        def account_login(payload: dict = Body(...)):
+            username = payload.get("username")
+            password = payload.get("password")
+            if not isinstance(username, str) or not isinstance(password, str):
+                raise HTTPException(status_code=400, detail="Username and password are required.")
+            return login_account(username, password)
+
+    if "/api/account/session" not in existing:
+        @app.post("/api/account/session")
+        def account_session(payload: dict = Body(...)):
+            token = payload.get("auth_token")
+            if not isinstance(token, str):
+                raise HTTPException(status_code=400, detail="auth_token is required.")
+            account_id = verify_session(token)
+            if account_id is None:
+                raise HTTPException(status_code=401, detail="Session is invalid or expired.")
+            return {"ok": True, "account_id": account_id}
