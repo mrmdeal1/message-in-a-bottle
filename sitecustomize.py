@@ -1,3 +1,4 @@
+import functools
 import json
 import math
 import os
@@ -297,6 +298,34 @@ def _install_beach_test_route(app):
         }
 
 
+def _wrap_bottle_get(func):
+    @functools.wraps(func)
+    def wrapped(*args, **kwargs):
+        result = func(*args, **kwargs)
+
+        if not isinstance(result, dict) or storage is None:
+            return result
+
+        account_id = kwargs.get("account_id")
+        if account_id is None and args:
+            account_id = args[0]
+        account_id = account_id or "demo-account"
+
+        try:
+            bottle = storage.load_bottle(account_id)
+        except Exception as exc:
+            print(f"Reply return lookup skipped: {exc}")
+            return result
+
+        if bottle is not None:
+            result["reply_message"] = bottle.get("reply_message")
+            result["reply_time"] = bottle.get("reply_time")
+
+        return result
+
+    return wrapped
+
+
 if engine is not None:
     engine.move_bottle_live = _move_bottle_live_remote
     _original_shipping_density = engine.shipping_density_at
@@ -317,11 +346,23 @@ try:
     from fastapi import FastAPI
 
     _original_fastapi_init = FastAPI.__init__
+    _original_fastapi_get = FastAPI.get
 
     def _fastapi_init_with_beach_test(self, *args, **kwargs):
         _original_fastapi_init(self, *args, **kwargs)
         _install_beach_test_route(self)
 
+    def _fastapi_get_with_reply(self, path, *args, **kwargs):
+        decorator = _original_fastapi_get(self, path, *args, **kwargs)
+
+        def install(func):
+            if path == "/api/bottle":
+                func = _wrap_bottle_get(func)
+            return decorator(func)
+
+        return install
+
     FastAPI.__init__ = _fastapi_init_with_beach_test
+    FastAPI.get = _fastapi_get_with_reply
 except Exception as exc:
-    print(f"Beach test route install skipped: {exc}")
+    print(f"Startup patch install skipped: {exc}")
