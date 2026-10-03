@@ -224,6 +224,67 @@ def verify_session(token):
     return row[0] if row else None
 
 
+def _launch_time(state):
+    for event in state.get("journey_history", []):
+        if event.get("event") == "launched" and event.get("time"):
+            return event.get("time")
+    return state.get("current_time")
+
+
+def _history_outcome(state):
+    status = str(state.get("status") or "drifting").lower()
+    if state.get("opened") or "opened" in status or "journey_ended" in status:
+        return "Opened"
+    if state.get("destroyed") or "lost" in status or "destroyed" in status:
+        return "Lost"
+    if "ashore" in status:
+        return "Ashore"
+    return "Drifting"
+
+
+def account_history(account_id):
+    if not storage.database_enabled():
+        return []
+
+    with storage._connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    b.month_key,
+                    b.bottle_id,
+                    b.state,
+                    e.granted_at
+                FROM bottles b
+                LEFT JOIN entitlements e
+                  ON e.account_id = b.account_id
+                 AND e.month_key = b.month_key
+                WHERE b.account_id = %s
+                ORDER BY b.month_key DESC, b.updated_at DESC
+                """,
+                (account_id,),
+            )
+            rows = cur.fetchall()
+
+    history = []
+    for month_key, bottle_id, state, granted_at in rows:
+        state = dict(state or {})
+        areas = list(state.get("journey_areas") or [])
+        history.append(
+            {
+                "bottle_id": bottle_id,
+                "month_key": month_key,
+                "purchased_at": granted_at.replace(microsecond=0).isoformat() if granted_at else None,
+                "thrown_at": _launch_time(state),
+                "location": areas[-1] if areas else "Open Ocean",
+                "miles": round(float(state.get("total_miles_traveled", 0.0) or 0.0), 2),
+                "outcome": _history_outcome(state),
+            }
+        )
+
+    return history
+
+
 def install_auth_routes(app):
     existing = {getattr(route, "path", None) for route in getattr(app, "routes", [])}
 
@@ -255,3 +316,18 @@ def install_auth_routes(app):
             if account_id is None:
                 raise HTTPException(status_code=401, detail="Session is invalid or expired.")
             return {"ok": True, "account_id": account_id}
+
+    if "/api/account/history" not in existing:
+        @app.post("/api/account/history")
+        def account_bottle_history(payload: dict = Body(...)):
+            token = payload.get("auth_token")
+            if not isinstance(token, str):
+                raise HTTPException(status_code=400, detail="auth_token is required.")
+            account_id = verify_session(token)
+            if account_id is None:
+                raise HTTPException(status_code=401, detail="Session is invalid or expired.")
+            return {
+                "ok": True,
+                "account_id": account_id,
+                "history": account_history(account_id),
+            }
