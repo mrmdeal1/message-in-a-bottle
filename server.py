@@ -20,7 +20,7 @@ import storage
 app = FastAPI(title="Message in a Bottle API", version="0.1.0")
 ANNUAL_WORKER_URL = "https://message-in-a-bottle-currents.onrender.com/annual"
 
-APPLE_BUNDLE_ID = "com.nobudgetinternational.messageinabottle"
+APPLE_BUNDLE_ID = "com.nobudgetinternational.VwithaTUDE"
 APPLE_PRODUCT_ID = "message_in_a_bottle.monthly_bottle"
 APPLE_ENVIRONMENT = Environment.SANDBOX
 APPLE_APP_ID = None
