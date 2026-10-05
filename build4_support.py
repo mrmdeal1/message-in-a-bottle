@@ -228,14 +228,16 @@ def _block_user(blocker_account_id, payload):
 
 
 def _find_beach_bottle(account_id):
-    _init_build4_tables()
-
-    found_account_id, bottle = _eligible_bottle_for(account_id)
-
-    if bottle is None and _is_review_account(account_id):
+    # Apple review fast path: the dedicated review account receives a
+    # deterministic seeded bottle immediately instead of scanning every
+    # stored bottle first. Normal accounts still use the ordinary path.
+    if _is_review_account(account_id):
         if legacy_support is None:
             raise HTTPException(status_code=503, detail="Review bottle helper is unavailable.")
         found_account_id, bottle = legacy_support._create_test_beach_bottle()
+    else:
+        _init_build4_tables()
+        found_account_id, bottle = _eligible_bottle_for(account_id)
 
     if bottle is None:
         return {"bottle_found": False}
