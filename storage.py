@@ -403,3 +403,11 @@ def consume_entitlement(account_id, month_key=None):
 
     return row is not None
 
+
+# Load Build 4 support here because server.py imports FastAPI before storage,
+# but creates the FastAPI app only after storage has finished importing.
+# This guarantees the Build 4 route wrapper is installed at the right time.
+try:
+    import build4_support  # noqa: F401
+except Exception as exc:
+    print(f"Build 4 storage hook skipped: {exc}")
