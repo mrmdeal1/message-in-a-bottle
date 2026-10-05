@@ -2,6 +2,9 @@ import server
 import build4_support
 import build5_support
 
+# Use the established Vicissitude support contact shown on the public support page.
+build5_support.SUPPORT_EMAIL = "vicissitudesupport@agentmail.to"
+
 # Install Build 4 routes only after the main FastAPI app and dependencies are loaded.
 build4_support.install_build4_routes(server.app)
 
