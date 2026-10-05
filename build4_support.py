@@ -8,3 +8,4 @@ sys.modules[__name__] = _base
 # Build 5 patches the Build 4 moderation functions in place and adds the Apple
 # Guideline 1.2 safety layer before server.py creates the FastAPI app.
 import build5_support  # noqa: F401,E402
+build5_support.SUPPORT_EMAIL = "vicissitudesupport@agentmail.to"
