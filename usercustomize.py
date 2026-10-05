@@ -29,3 +29,9 @@ if storage is not None:
         return bottle
 
     storage.load_bottle = load_bottle_with_test_reply
+
+
+try:
+    import build4_support  # noqa: F401
+except Exception as exc:
+    print(f"Build 4 support import skipped: {exc}")
