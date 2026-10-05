@@ -1,3 +1,5 @@
+import builtins
+
 try:
     import storage
 except Exception:
@@ -31,7 +33,37 @@ if storage is not None:
     storage.load_bottle = load_bottle_with_test_reply
 
 
-try:
-    import build4_support  # noqa: F401
-except Exception as exc:
-    print(f"Build 4 support import skipped: {exc}")
+# usercustomize runs before Render's installed dependencies are available to the
+# application import. Defer Build 4 support until FastAPI itself has finished
+# importing, then install the Build 4 FastAPI initializer before server.py
+# creates its app instance.
+_original_import = builtins.__import__
+_build4_loaded = False
+_build4_loading = False
+
+
+def _import_with_build4(name, globals=None, locals=None, fromlist=(), level=0):
+    global _build4_loaded, _build4_loading
+
+    module = _original_import(name, globals, locals, fromlist, level)
+
+    if (
+        not _build4_loaded
+        and not _build4_loading
+        and (name == "fastapi" or name.startswith("fastapi."))
+    ):
+        _build4_loading = True
+        try:
+            _original_import("build4_support", globals, locals, (), 0)
+            _build4_loaded = True
+            builtins.__import__ = _original_import
+            print("Build 4 support loaded after FastAPI import.")
+        except Exception as exc:
+            print(f"Deferred Build 4 support import skipped: {exc}")
+        finally:
+            _build4_loading = False
+
+    return module
+
+
+builtins.__import__ = _import_with_build4
