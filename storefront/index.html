@@ -11,7 +11,7 @@
 #entrance{min-height:100svh;position:relative;display:grid;place-items:center;overflow:hidden;background:#050505}
 .backdrop{position:absolute;inset:-5%;width:110%;height:110%;object-fit:cover;object-position:center 45%;filter:blur(24px) saturate(.82) brightness(.48);transform:scale(1.08);opacity:.72}
 .veil{position:absolute;inset:0;background:radial-gradient(circle at 50% 48%,rgba(116,65,21,.08),transparent 36%),linear-gradient(90deg,rgba(0,0,0,.6),rgba(0,0,0,.12) 28%,rgba(0,0,0,.12) 72%,rgba(0,0,0,.6));pointer-events:none}
-.cover-wrap{position:relative;z-index:2;height:100svh;max-height:1000px;aspect-ratio:360/785;max-width:100vw;filter:drop-shadow(0 0 34px rgba(0,0,0,.55))}
+.cover-wrap{position:relative;z-index:2;height:100svh;max-height:1000px;aspect-ratio:260/567;max-width:100vw;filter:drop-shadow(0 0 34px rgba(0,0,0,.55))}
 .cover{display:block;width:100%;height:100%;object-fit:contain}
 .hotspot{position:absolute;left:50%;top:80.6%;transform:translateX(-50%);width:48%;height:9.2%;border:0;background:transparent;border-radius:999px;cursor:pointer;transition:.2s ease}
 .hotspot:hover,.hotspot:focus-visible{outline:none;transform:translateX(-50%) scale(1.015);box-shadow:0 0 26px 10px rgba(202,142,60,.16)}
@@ -43,7 +43,7 @@
 </section>
 <script>
 const entrance=document.getElementById('entrance'),reserve=document.getElementById('reserve');
-fetch('assets/cover360.b64',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('cover');return r.text()}).then(t=>{const src='data:image/jpeg;base64,'+t.trim();document.getElementById('cover').src=src;document.getElementById('backdrop').src=src;document.getElementById('loading').style.display='none'}).catch(()=>{document.getElementById('loading').textContent='Unable to load cover'});
+Promise.all(['assets/coverw1.txt','assets/coverw2.txt','assets/coverw3.txt'].map(p=>fetch(p,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(p);return r.text()}))).then(parts=>{const src='data:image/webp;base64,'+parts.map(x=>x.trim()).join('');document.getElementById('cover').src=src;document.getElementById('backdrop').src=src;document.getElementById('loading').style.display='none'}).catch(()=>{document.getElementById('loading').textContent='Unable to load cover'});
 document.getElementById('enterBtn').addEventListener('click',()=>{entrance.classList.add('hidden');reserve.classList.add('active');window.scrollTo(0,0)});
 document.getElementById('backBtn').addEventListener('click',()=>{reserve.classList.remove('active');entrance.classList.remove('hidden');window.scrollTo(0,0)});
 </script>
