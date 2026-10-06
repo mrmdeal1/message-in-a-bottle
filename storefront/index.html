@@ -16,11 +16,15 @@ button,a{font:inherit} .hidden{display:none!important}
 .left img,.right img{filter:brightness(.56) saturate(.72) sepia(.10) contrast(.98);transform:scale(1.18) translateY(-7%);transform-origin:center center}
 .center img{filter:none}
 .left::after,.right::after,.center::before,.center::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:2}
-.left::after{background:linear-gradient(90deg,rgba(0,0,0,.28) 0%,rgba(0,0,0,.10) 55%,rgba(0,0,0,.82) 100%)}
-.right::after{background:linear-gradient(90deg,rgba(0,0,0,.82) 0%,rgba(0,0,0,.10) 45%,rgba(0,0,0,.28) 100%)}
+.left::after{background:
+linear-gradient(to top,rgba(0,0,0,.98) 0%,rgba(0,0,0,.96) 15%,rgba(0,0,0,.78) 23%,rgba(0,0,0,.18) 34%,rgba(0,0,0,0) 46%),
+linear-gradient(90deg,rgba(0,0,0,.28) 0%,rgba(0,0,0,.10) 55%,rgba(0,0,0,.82) 100%)}
+.right::after{background:
+linear-gradient(to top,rgba(0,0,0,.98) 0%,rgba(0,0,0,.96) 15%,rgba(0,0,0,.78) 23%,rgba(0,0,0,.18) 34%,rgba(0,0,0,0) 46%),
+linear-gradient(90deg,rgba(0,0,0,.82) 0%,rgba(0,0,0,.10) 45%,rgba(0,0,0,.28) 100%)}
 .center::before{background:linear-gradient(90deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,0) 10%,rgba(0,0,0,0) 90%,rgba(0,0,0,.55) 100%)}
 .center::after{background:radial-gradient(circle at 50% 62%,rgba(178,111,35,.06),transparent 40%)}
-.side-tagline{position:absolute;left:50%;bottom:4.2%;transform:translateX(-50%);z-index:4;width:88%;text-align:center;color:#efe8db;font-size:clamp(.78rem,1.15vw,1.15rem);letter-spacing:.015em;text-shadow:0 2px 10px rgba(0,0,0,.9);white-space:nowrap}
+.side-tagline{position:absolute;left:50%;bottom:6.2%;transform:translateX(-50%);z-index:4;width:88%;text-align:center;color:#efe8db;font-size:clamp(.9rem,1.15vw,1.15rem);letter-spacing:.015em;text-shadow:0 2px 10px rgba(0,0,0,.95);white-space:nowrap}
 .hotspot{position:absolute;left:50%;top:84.6%;transform:translateX(-50%);width:48%;height:9.2%;border:0;background:transparent;border-radius:999px;cursor:pointer;z-index:5}
 .hotspot:hover,.hotspot:focus-visible{outline:none;box-shadow:0 0 18px 7px rgba(205,149,67,.18)}
 #reserve{display:none;min-height:100svh;max-width:1180px;margin:auto;padding:48px 22px 84px;background:radial-gradient(circle at 50% 0%,rgba(148,92,27,.12),transparent 34%),#050505}
