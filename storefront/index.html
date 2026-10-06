@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Vicissitude Private Reserve</title>
+<style>
+:root{--black:#090909;--ivory:#f0ede6;--brass:#b08a4a;--muted:#9d978d}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--black);color:var(--ivory);font-family:Georgia,'Times New Roman',serif}
+button,a{font:inherit}
+#entrance{min-height:100svh;display:grid;place-items:center;padding:32px;text-align:center;background:radial-gradient(circle at 50% 38%,#17130d 0,#0c0b09 32%,#090909 70%)}
+.mark{letter-spacing:.42em;text-transform:uppercase;font-size:clamp(2.5rem,8vw,7rem);font-weight:400;margin:0 0 18px}
+.line{width:72px;height:1px;background:var(--brass);margin:0 auto 24px}
+.tag{font-style:italic;color:var(--muted);letter-spacing:.12em;margin:0 0 52px;font-size:clamp(.95rem,2vw,1.15rem)}
+.private-btn{background:transparent;color:var(--brass);border:1px solid var(--brass);padding:14px 34px;letter-spacing:.28em;text-transform:uppercase;cursor:pointer;transition:.25s ease}
+.private-btn:hover{background:var(--brass);color:var(--black)}
+#reserve{display:none;min-height:100svh;padding:56px 24px 80px;max-width:1200px;margin:auto}
+.reserve-head{text-align:center;margin-bottom:56px}.eyebrow{color:var(--brass);letter-spacing:.3em;text-transform:uppercase;font-size:.78rem}.reserve-title{font-size:clamp(2rem,5vw,4rem);font-weight:400;margin:12px 0}.reserve-sub{color:var(--muted);max-width:600px;margin:0 auto;line-height:1.6}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}.card{min-height:360px;border:1px solid #2a261f;padding:26px;display:flex;flex-direction:column;justify-content:flex-end;background:linear-gradient(180deg,#111 0,#0c0c0c 100%)}
+.card small{color:var(--brass);letter-spacing:.2em;text-transform:uppercase}.card h2{font-weight:400;font-size:1.8rem;margin:10px 0}.card p{color:var(--muted);line-height:1.5}.shop{margin-top:14px;display:inline-block;color:var(--ivory);text-decoration:none;border-bottom:1px solid var(--brass);width:max-content;padding-bottom:4px}
+.footer{text-align:center;color:#625d55;font-size:.8rem;margin-top:72px;letter-spacing:.08em}
+@media(max-width:800px){.grid{grid-template-columns:1fr}.mark{letter-spacing:.25em}.card{min-height:260px}}
+</style>
+</head>
+<body>
+<section id="entrance">
+  <div>
+    <h1 class="mark">Vicissitude</h1>
+    <div class="line"></div>
+    <p class="tag">Deliberately unexplained.</p>
+    <button class="private-btn" id="enterBtn">Private</button>
+  </div>
+</section>
+<section id="reserve">
+  <header class="reserve-head">
+    <div class="eyebrow">Vicissitude</div>
+    <h1 class="reserve-title">Private Reserve</h1>
+    <p class="reserve-sub">A restrained collection from the world of Vicissitude. No noise. No excess. Only what belongs here.</p>
+  </header>
+  <div class="grid">
+    <article class="card">
+      <small>Collection I</small>
+      <h2>The V</h2>
+      <p>The primary mark. Minimal, recognizable, and built to stand on its own.</p>
+      <a class="shop" href="#" aria-label="Shop The V collection">Enter collection</a>
+    </article>
+    <article class="card">
+      <small>Collection II</small>
+      <h2>VwithaTude</h2>
+      <p>The name carried differently. A second line with the same restraint and attitude.</p>
+      <a class="shop" href="#" aria-label="Shop VwithaTude collection">Enter collection</a>
+    </article>
+    <article class="card">
+      <small>Limited Relic</small>
+      <h2>Sextant Edition</h2>
+      <p>A limited Private Reserve release. Shirt and cap only. Produced to disappear.</p>
+      <a class="shop" href="#" aria-label="Shop Sextant Edition">View release</a>
+    </article>
+  </div>
+  <div class="footer">NO BUDGET INTERNATIONAL · VICISSITUDE PRIVATE RESERVE</div>
+</section>
+<script>
+const entrance=document.getElementById('entrance');
+const reserve=document.getElementById('reserve');
+document.getElementById('enterBtn').addEventListener('click',()=>{
+  entrance.style.display='none';
+  reserve.style.display='block';
+  window.scrollTo({top:0,behavior:'instant'});
+});
+</script>
+</body>
+</html>
