@@ -32,182 +32,82 @@ linear-gradient(90deg,rgba(0,0,0,.82) 0%,rgba(0,0,0,.10) 45%,rgba(0,0,0,.30) 100
   min-height:100svh;
   position:relative;
   overflow:hidden;
-  background:
-    radial-gradient(circle at 50% 22%,rgba(188,125,48,.18),transparent 30%),
-    linear-gradient(180deg,#21160d 0%,#100b08 48%,#050505 100%);
-  padding:28px 22px 48px;
+  background:#050505;
 }
-#reserve.active{display:flex;flex-direction:column}
-.back{
-  align-self:center;
-  background:rgba(6,5,4,.62);
-  color:#aa9a82;
-  border:1px solid #4d3a25;
-  padding:9px 16px;
-  letter-spacing:.15em;
-  text-transform:uppercase;
-  font-size:.68rem;
-  cursor:pointer;
-  z-index:3;
-}
-.back:hover,.back:focus-visible{color:#f2e5ca;border-color:var(--brass);outline:none}
-.store-choice-wrap{
-  flex:1;
+#reserve.active{
   display:grid;
   place-items:center;
+}
+.store-stage{
+  position:relative;
+  width:min(100vw,calc(100svh * 4 / 3));
+  aspect-ratio:4 / 3;
+  background:#050505;
+}
+.store-stage img{
+  position:absolute;
+  inset:0;
   width:100%;
-}
-.store-choice-panel{
-  width:min(920px,92vw);
-  text-align:center;
-  padding:34px 28px 42px;
-}
-.store-kicker{
-  color:#b89559;
-  letter-spacing:.28em;
-  text-transform:uppercase;
-  font-size:.74rem;
-  margin-bottom:10px;
-}
-.store-title{
-  margin:0 0 34px;
-  font-size:clamp(2.7rem,6vw,5.2rem);
-  font-weight:400;
-  color:#e7bf72;
-  text-shadow:0 4px 22px rgba(0,0,0,.78);
-}
-.store-doors{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:22px;
-}
-.store-door{
-  min-height:145px;
-  border:1px solid #7d5a2d;
-  border-radius:16px;
-  background:
-    linear-gradient(180deg,rgba(94,55,25,.96),rgba(41,24,13,.98));
-  color:#f0d39a;
-  text-decoration:none;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  text-align:center;
-  padding:24px 18px;
-  box-shadow:
-    inset 0 0 0 1px rgba(235,182,91,.15),
-    0 14px 34px rgba(0,0,0,.45);
-  transition:transform .16s ease, border-color .16s ease, box-shadow .16s ease;
-}
-.store-door:hover,.store-door:focus-visible{
-  transform:translateY(-2px);
-  border-color:#c7974a;
-  box-shadow:
-    inset 0 0 0 1px rgba(255,210,126,.18),
-    0 18px 38px rgba(0,0,0,.52),
-    0 0 22px rgba(175,116,46,.10);
-  outline:none;
-}
-.store-door span{
+  height:100%;
+  object-fit:contain;
   display:block;
-  font-size:clamp(1.25rem,2vw,1.75rem);
-  letter-spacing:.04em;
 }
-.reserve-door{
-  position:relative;
-  overflow:visible;
-  min-height:145px;
-  border:none;
-  border-radius:0;
-  background:transparent;
-  box-shadow:none;
-  padding-top:34px;
-}
-.reserve-door::before{
-  content:"";
+.back{
   position:absolute;
-  left:7%;
-  right:7%;
-  top:8%;
-  height:54%;
-  border:2px solid #9a6b32;
-  border-bottom:3px solid #6e461f;
-  border-radius:28px 28px 8px 8px;
-  background:
-    linear-gradient(180deg,#8a5628 0%,#6e3f1e 58%,#4a2a14 100%);
-  box-shadow:
-    inset 0 0 0 2px rgba(235,182,91,.10),
-    inset 0 12px 18px rgba(255,220,160,.05),
-    0 10px 22px rgba(0,0,0,.34);
-  z-index:1;
-}
-.reserve-door::after{
-  content:"";
-  position:absolute;
-  left:7%;
-  right:7%;
-  bottom:8%;
-  height:42%;
-  border:2px solid #8c5d29;
-  border-top:3px solid #b07a38;
-  border-radius:7px 7px 14px 14px;
-  background:
-    linear-gradient(180deg,#5a3218 0%,#3d2111 100%);
-  box-shadow:
-    inset 0 0 0 1px rgba(245,198,107,.08),
-    0 12px 24px rgba(0,0,0,.36);
-  z-index:1;
-}
-.reserve-door span{
-  position:relative;
-  z-index:4;
-  display:block;
-  margin-top:34px;
-  line-height:1.08;
-  font-size:clamp(1.15rem,1.75vw,1.55rem);
-  color:#f0d39a;
-  text-shadow:0 2px 8px rgba(0,0,0,.72);
-}
-.reserve-door span::before{
-  content:"";
-  position:absolute;
+  top:18px;
   left:50%;
-  top:-28px;
   transform:translateX(-50%);
-  width:28px;
-  height:34px;
-  border:2px solid #c89a4d;
-  border-radius:5px 5px 8px 8px;
-  background:linear-gradient(180deg,#d7ad63 0%,#8a612d 100%);
-  box-shadow:0 2px 7px rgba(0,0,0,.45);
+  z-index:8;
+  background:rgba(6,5,4,.58);
+  color:#b7a486;
+  border:1px solid rgba(126,92,49,.65);
+  padding:8px 14px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  font-size:.66rem;
+  cursor:pointer;
 }
-.reserve-door span::after{
-  content:"";
-  position:absolute;
-  left:11%;
-  right:11%;
-  top:-9px;
-  height:2px;
-  background:linear-gradient(90deg,transparent,#b8843d 10%,#b8843d 90%,transparent);
-  opacity:.85;
-}
-.reserve-door:hover,
-.reserve-door:focus-visible{
-  transform:translateY(-2px);
+.back:hover,.back:focus-visible{
+  color:#f1dfbd;
+  border-color:#c7974a;
   outline:none;
 }
-.reserve-door:hover::before,
-.reserve-door:focus-visible::before{
-  border-color:#c7974a;
-  box-shadow:
-    inset 0 0 0 2px rgba(255,210,126,.14),
-    0 14px 28px rgba(0,0,0,.42),
-    0 0 18px rgba(175,116,46,.10);
+.store-hotspot{
+  position:absolute;
+  z-index:6;
+  border:0;
+  background:transparent;
+  cursor:pointer;
+  border-radius:18px;
+  text-decoration:none;
+}
+.store-hotspot:hover,
+.store-hotspot:focus-visible{
+  outline:none;
+  box-shadow:0 0 20px rgba(205,149,67,.20);
+}
+.hotspot-v{
+  left:10.35%;
+  top:64.9%;
+  width:22.1%;
+  height:12.9%;
+}
+.hotspot-reserve{
+  left:38.1%;
+  top:64.45%;
+  width:23.8%;
+  height:16.15%;
+}
+.hotspot-tude{
+  left:67.55%;
+  top:64.9%;
+  width:22.1%;
+  height:12.9%;
 }
 @media(max-width:820px){
-  .store-doors{grid-template-columns:1fr;gap:14px}
-  .store-door{min-height:96px}
-  .store-choice-panel{padding-top:20px}
+  .store-stage{
+    width:100vw;
+  }
 }
 @media(max-width:820px){
   #entrance{display:block;height:100svh;min-height:0}
@@ -228,25 +128,12 @@ linear-gradient(90deg,rgba(0,0,0,.82) 0%,rgba(0,0,0,.10) 45%,rgba(0,0,0,.30) 100
 <section id="reserve" aria-label="Vicissitude General Store">
   <button class="back" id="backBtn">Return to cover</button>
 
-  <div class="store-choice-wrap">
-    <div class="store-choice-panel">
-      <div class="store-kicker">Vicissitude</div>
-      <h1 class="store-title">General Store</h1>
+  <div class="store-stage">
+    <img src="assets/vicissitude-general-store-three-doors.webp" alt="Vicissitude General Store">
 
-      <div class="store-doors">
-        <a class="store-door" id="mainLineOne" href="#the-v">
-          <span>The V</span>
-        </a>
-
-        <a class="store-door" id="mainLineTwo" href="#vwithatude">
-          <span>VwithaTude</span>
-        </a>
-
-        <a class="store-door reserve-door" id="reserveLine" href="#vicissitude-reserve">
-          <span>Vicissitude Reserve</span>
-        </a>
-      </div>
-    </div>
+    <a class="store-hotspot hotspot-v" id="mainLineOne" href="#the-v" aria-label="Open The V collection"></a>
+    <a class="store-hotspot hotspot-reserve" id="reserveLine" href="#vicissitude-reserve" aria-label="Open Vicissitude Reserve"></a>
+    <a class="store-hotspot hotspot-tude" id="mainLineTwo" href="#vwithatude" aria-label="Open VwithaTude collection"></a>
   </div>
 </section>
 <script>
