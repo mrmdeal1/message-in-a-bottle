@@ -4,14 +4,20 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Vicissitude Private Reserve</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" rel="stylesheet">
 <style>
-:root{--black:#090909;--ivory:#f0ede6;--brass:#b08a4a;--muted:#9d978d}
+:root{--black:#090909;--ivory:#f0ede6;--brass:#b08a4a;--gold:#d6a74f;--muted:#9d978d}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--black);color:var(--ivory);font-family:Georgia,'Times New Roman',serif}
 button,a{font:inherit}
 #entrance{min-height:100svh;display:grid;place-items:center;padding:32px;text-align:center;background:radial-gradient(circle at 50% 38%,#17130d 0,#0c0b09 32%,#090909 70%)}
-.mark{letter-spacing:.42em;text-transform:uppercase;font-size:clamp(2.5rem,8vw,7rem);font-weight:400;margin:0 0 18px}
+.entrance-lockup{display:flex;flex-direction:column;align-items:center}
+.mark{font-family:'Great Vibes','Snell Roundhand','Apple Chancery',cursive;font-size:clamp(5rem,14vw,11rem);font-weight:400;line-height:.82;margin:0;color:transparent;background:linear-gradient(180deg,#f4d184 0%,#d5a448 35%,#9b6826 67%,#e1b960 100%);-webkit-background-clip:text;background-clip:text;filter:drop-shadow(0 2px 0 #5c3814) drop-shadow(0 0 18px rgba(176,138,74,.15));padding:.12em .18em .04em}
+.sextant{width:clamp(110px,18vw,185px);height:auto;margin-top:-6px;margin-bottom:16px;overflow:visible;filter:drop-shadow(0 0 10px rgba(176,138,74,.12))}
+.sextant *{vector-effect:non-scaling-stroke}
 .line{width:72px;height:1px;background:var(--brass);margin:0 auto 24px}
 .tag{font-style:italic;color:var(--muted);letter-spacing:.12em;margin:0 0 52px;font-size:clamp(.95rem,2vw,1.15rem)}
 .private-btn{background:transparent;color:var(--brass);border:1px solid var(--brass);padding:14px 34px;letter-spacing:.28em;text-transform:uppercase;cursor:pointer;transition:.25s ease}
@@ -21,13 +27,28 @@ button,a{font:inherit}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}.card{min-height:360px;border:1px solid #2a261f;padding:26px;display:flex;flex-direction:column;justify-content:flex-end;background:linear-gradient(180deg,#111 0,#0c0c0c 100%)}
 .card small{color:var(--brass);letter-spacing:.2em;text-transform:uppercase}.card h2{font-weight:400;font-size:1.8rem;margin:10px 0}.card p{color:var(--muted);line-height:1.5}.shop{margin-top:14px;display:inline-block;color:var(--ivory);text-decoration:none;border-bottom:1px solid var(--brass);width:max-content;padding-bottom:4px}
 .footer{text-align:center;color:#625d55;font-size:.8rem;margin-top:72px;letter-spacing:.08em}
-@media(max-width:800px){.grid{grid-template-columns:1fr}.mark{letter-spacing:.25em}.card{min-height:260px}}
+@media(max-width:800px){.grid{grid-template-columns:1fr}.mark{font-size:clamp(4.5rem,24vw,8rem)}.card{min-height:260px}}
 </style>
 </head>
 <body>
 <section id="entrance">
-  <div>
+  <div class="entrance-lockup">
     <h1 class="mark">Vicissitude</h1>
+    <svg class="sextant" viewBox="0 0 240 150" role="img" aria-label="Sextant emblem">
+      <g fill="none" stroke="#c99a45" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M40 118 A85 85 0 0 1 187 52"/>
+        <path d="M41 118 Q93 145 157 126 Q183 118 200 98"/>
+        <path d="M111 27 L111 125"/>
+        <path d="M111 42 L174 77"/>
+        <path d="M95 54 L167 54"/>
+        <path d="M154 49 L202 49"/>
+        <path d="M167 44 L184 54 L167 64"/>
+        <path d="M76 110 L111 77 L146 112"/>
+        <circle cx="111" cy="77" r="8" fill="#c99a45"/>
+        <circle cx="111" cy="125" r="10"/>
+        <path d="M55 114 L49 124 M68 120 L64 132 M84 124 L82 136 M101 127 L100 139 M121 128 L122 140 M140 126 L143 138 M158 121 L163 133 M174 114 L181 125" stroke-width="2"/>
+      </g>
+    </svg>
     <div class="line"></div>
     <p class="tag">Deliberately unexplained.</p>
     <button class="private-btn" id="enterBtn">Private</button>
