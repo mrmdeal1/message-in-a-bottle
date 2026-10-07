@@ -5,62 +5,41 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>The V | Vicissitude General Store</title>
 <style>
-:root{--brass:#d8b26b;--ink:#0a0805;--panel:rgba(18,13,8,.86)}
+:root{--brass:#d8b26b;--cream:#f3eadb;--muted:#cdbfaa}
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;background:#090705;color:#f3eadb;font-family:Georgia,"Times New Roman",serif}
-body{
-  background:
-    linear-gradient(rgba(7,5,3,.62),rgba(7,5,3,.88)),
-    url("assets/vicissitude_store_master.jpg") center/cover fixed;
-}
-.wrap{max-width:1180px;margin:0 auto;padding:28px 22px 60px}
-.top{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:34px}
-.back{display:inline-block;color:var(--brass);text-decoration:none;border:1px solid rgba(216,178,107,.72);border-radius:999px;padding:10px 16px;background:rgba(10,8,5,.68);font-weight:700;letter-spacing:.03em}
-.brand{font-size:clamp(15px,1.8vw,22px);letter-spacing:.12em;color:#e6cf9b;text-transform:uppercase;text-align:right}
-.hero{text-align:center;padding:34px 20px 30px;margin-bottom:28px;background:linear-gradient(180deg,rgba(12,8,5,.62),rgba(12,8,5,.84));border:1px solid rgba(216,178,107,.34);box-shadow:0 15px 45px rgba(0,0,0,.28)}
-.hero h1{margin:0;color:var(--brass);font-size:clamp(42px,7vw,82px);font-weight:500;letter-spacing:.03em}
-.hero p{margin:10px 0 0;font-size:clamp(16px,2vw,22px);color:#e8dcc8}
-.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}
-.card{min-height:320px;display:flex;flex-direction:column;justify-content:flex-end;position:relative;overflow:hidden;border:1px solid rgba(216,178,107,.34);background:var(--panel);box-shadow:0 14px 38px rgba(0,0,0,.3)}
-.card::before{content:"";position:absolute;inset:0;background:url("assets/vicissitude_store_master.jpg") center/cover;filter:saturate(.82) brightness(.72);transform:scale(1.04)}
-.card:nth-child(1)::before{background-position:14% 56%}
-.card:nth-child(2)::before{background-position:23% 58%}
-.card:nth-child(3)::before{background-position:11% 73%}
-.card:nth-child(4)::before{background-position:29% 71%}
-.info{position:relative;padding:18px;background:linear-gradient(180deg,transparent,rgba(7,5,3,.92) 28%,rgba(7,5,3,.98));padding-top:58px}
-.info h2{margin:0 0 6px;font-size:22px;color:#f4e7ce}
-.info p{margin:0;color:#cdbfaa;font-size:15px}
-.note{text-align:center;margin-top:26px;color:#c9b58f;font-size:14px}
+html,body{margin:0;min-height:100%;background:#090705;color:var(--cream);font-family:Georgia,"Times New Roman",serif}
+body{background:linear-gradient(rgba(7,5,3,.66),rgba(7,5,3,.9)),url("assets/vicissitude_store_master.jpg") center/cover fixed}
+.wrap{max-width:1240px;margin:auto;padding:26px 22px 58px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:28px}
+.back{color:var(--brass);text-decoration:none;border:1px solid rgba(216,178,107,.72);border-radius:999px;padding:10px 16px;background:rgba(10,8,5,.7);font-weight:700}
+.brand{font-size:clamp(14px,1.7vw,21px);letter-spacing:.11em;color:#e6cf9b;text-transform:uppercase}
+.hero{text-align:center;padding:30px 18px 26px;margin-bottom:24px;background:rgba(12,8,5,.78);border:1px solid rgba(216,178,107,.34)}
+.hero h1{margin:0;color:var(--brass);font-size:clamp(40px,6.5vw,76px);font-weight:500}
+.hero p{margin:9px 0 0;font-size:clamp(15px,1.8vw,20px);color:#e8dcc8}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.card{min-height:245px;display:flex;flex-direction:column;justify-content:flex-end;border:1px solid rgba(216,178,107,.34);background:linear-gradient(180deg,rgba(42,29,17,.72),rgba(14,10,6,.94));box-shadow:0 12px 30px rgba(0,0,0,.28);padding:22px}
+.mark{font-size:58px;color:var(--brass);opacity:.92;margin:auto;text-shadow:0 4px 16px rgba(0,0,0,.5)}
+.card h2{margin:16px 0 5px;font-size:20px}
+.price{color:var(--brass);font-weight:700;font-size:17px}
+.note{text-align:center;margin-top:24px;color:#c9b58f;font-size:14px}
 @media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:560px){
-  .wrap{padding:18px 14px 40px}
-  .top{align-items:flex-start}
-  .brand{font-size:13px;max-width:160px}
-  .grid{grid-template-columns:1fr}
-  .card{min-height:280px}
-}
+@media(max-width:560px){.wrap{padding:18px 14px 40px}.brand{font-size:12px;text-align:right}.grid{grid-template-columns:1fr}.card{min-height:210px}}
 </style>
 </head>
-<body>
-<main class="wrap">
-  <div class="top">
-    <a class="back" href="index.html">← General Store</a>
-    <div class="brand">Vicissitude General Store</div>
-  </div>
-
-  <section class="hero">
-    <h1>The V</h1>
-    <p>The signature Vicissitude line.</p>
-  </section>
-
-  <section class="grid" aria-label="The V collection">
-    <article class="card"><div class="info"><h2>The V Tee</h2><p>Signature short sleeve.</p></div></article>
-    <article class="card"><div class="info"><h2>Youth V Tee</h2><p>The V for the next generation.</p></div></article>
-    <article class="card"><div class="info"><h2>The V Hoodie</h2><p>Classic heavyweight layer.</p></div></article>
-    <article class="card"><div class="info"><h2>The V Ball Cap</h2><p>Clean, understated Vicissitude mark.</p></div></article>
-  </section>
-
-  <p class="note">Product purchase links will be connected as the collection listings are finalized.</p>
-</main>
-</body>
-</html>
+<body><main class="wrap">
+<div class="top"><a class="back" href="index.html">← General Store</a><div class="brand">Vicissitude General Store</div></div>
+<section class="hero"><h1>The V</h1><p>The signature Vicissitude main line.</p></section>
+<section class="grid">
+<article class="card"><div class="mark">V</div><h2>Vicissitude Main Line “V” Women’s Tee</h2><div class="price">From $45.00</div></article>
+<article class="card"><div class="mark">V</div><h2>Vicissitude Main Line “V” Tumbler</h2><div class="price">From $34.00</div></article>
+<article class="card"><div class="mark">V</div><h2>Vicissitude Main Line “V” Mug</h2><div class="price">From $20.00</div></article>
+<article class="card"><div class="mark">V</div><h2>Vicissitude Main Line “V” Cap</h2><div class="price">From $37.50</div></article>
+<article class="card"><div class="mark">V</div><h2>Vicissitude Main Line Hoodie</h2><div class="price">From $75.00</div></article>
+<article class="card"><div class="mark">V</div><h2>Vicissitude Main Line “V” Long-T</h2><div class="price">From $60.00</div></article>
+<article class="card"><div class="mark">V</div><h2>Vicissitude Main Line “V” Short-T</h2><div class="price">From $45.00</div></article>
+<article class="card"><div class="mark">V</div><h2>Vicissitude Youth Main Line “V” Ball Cap</h2><div class="price">From $28.00</div></article>
+<article class="card"><div class="mark">V</div><h2>Vicissitude Youth Main Line “V” Fleece Hoodie</h2><div class="price"></div></article>
+<article class="card"><div class="mark">V</div><h2>Vicissitude Youth Main Line “V” Tee</h2><div class="price">From $30.00</div></article>
+</section>
+<p class="note">Product images and purchase links will be connected to the live listings next.</p>
+</main></body></html>
