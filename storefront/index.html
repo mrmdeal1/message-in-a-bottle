@@ -10,16 +10,16 @@ html,body{margin:0;width:100%;height:100%;background:#050505;overflow:hidden}
 .art{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;transform:scale(1.08);transform-origin:center center}
 .hotspot{position:absolute;background:transparent;border:0;cursor:pointer;appearance:none;-webkit-appearance:none;overflow:hidden}
 .hotspot:focus{outline:none}
-.hotspot::after{content:attr(data-label);position:absolute;left:50%;bottom:7%;transform:translateX(-50%) translateY(8px);padding:.5rem .9rem;border:1px solid rgba(201,155,82,.8);border-radius:999px;background:rgba(10,8,5,.72);color:#d8b26b;font:600 clamp(12px,1.2vw,18px)/1.1 Georgia,serif;letter-spacing:.04em;white-space:nowrap;opacity:0;transition:opacity .22s ease,transform .22s ease,box-shadow .22s ease;text-shadow:0 1px 2px #000;box-shadow:0 0 0 rgba(216,178,107,0)}
+.hotspot::after{content:attr(data-label);position:absolute;left:50%;bottom:8%;transform:translateX(-50%) translateY(8px);padding:.65rem 1.15rem;border:1px solid rgba(201,155,82,.9);border-radius:999px;background:rgba(10,8,5,.76);color:#d8b26b;font:700 clamp(14px,1.45vw,21px)/1.1 Georgia,serif;letter-spacing:.05em;white-space:nowrap;opacity:0;transition:opacity .22s ease,transform .22s ease,box-shadow .22s ease;text-shadow:0 1px 2px #000;box-shadow:0 0 0 rgba(216,178,107,0)}
 .hotspot:hover::after,.hotspot:focus-visible::after{opacity:1;transform:translateX(-50%) translateY(0);box-shadow:0 0 18px rgba(216,178,107,.32)}
 .hotspot::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at center,rgba(216,178,107,.16),rgba(216,178,107,0) 68%);opacity:0;transition:opacity .22s ease}
 .hotspot:hover::before,.hotspot:focus-visible::before{opacity:1}
 .left{left:0;top:18%;width:32%;height:72%}
-.center{left:32%;top:18%;width:36%;height:72%}
+.center{left:34%;top:18%;width:32%;height:72%}
 .right{right:0;top:18%;width:32%;height:72%}
 .cover{left:38%;top:0;width:24%;height:18%}
 @media (hover:none),(pointer:coarse){
-  .hotspot::after{opacity:.78;transform:translateX(-50%) translateY(0);bottom:4%;font-size:clamp(11px,2.8vw,16px);padding:.42rem .72rem;background:rgba(10,8,5,.6)}
+  .hotspot::after{opacity:.78;transform:translateX(-50%) translateY(0);bottom:4%;font-size:clamp(13px,3.2vw,18px);padding:.55rem .9rem;background:rgba(10,8,5,.6)}
   .hotspot::before{opacity:.06}
   .cover::after,.cover::before{display:none}
 }
