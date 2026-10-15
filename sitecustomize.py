@@ -1,4 +1,7 @@
 import functools
+import copy
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import json
 import math
 import os
@@ -25,6 +28,14 @@ except Exception as exc:
 
 CURRENT_WORKER_URL = "https://message-in-a-bottle-currents.onrender.com/current"
 CURRENT_WORKER_HEALTH_URL = "https://message-in-a-bottle-currents.onrender.com/health"
+# One task at a time: avoid crowding the 512-MiB ocean-current worker.
+_CATCHUP_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bottle-catchup")
+_CATCHUP_LOCK = threading.Lock()
+_CATCHUP_PENDING = set()
+_CATCHUP_LAST_ATTEMPT = {}
+_CATCHUP_COOLDOWN_SECONDS = 60
+_MAX_CATCHUP_PENDING = 12
+
 TEST_REPLY_MESSAGE = "Your bottle found me at just the right time. Thank you for sending it into the world."
 
 
@@ -45,7 +56,7 @@ def _fetch_current_payload(lat, lon, date):
     url = f"{CURRENT_WORKER_URL}?{query}"
 
     last_exc = None
-    delays = (0, 2, 5)
+    delays = (0, 10, 20)
 
     for attempt, delay in enumerate(delays, start=1):
         if delay:
@@ -57,7 +68,9 @@ def _fetch_current_payload(lat, lon, date):
         except (HTTPError, URLError, TimeoutError) as exc:
             last_exc = exc
             print(f"Current worker attempt {attempt} failed: {exc}")
-            if attempt == 1:
+            if attempt == 1 and not (
+                isinstance(exc, HTTPError) and exc.code in (429, 503)
+            ):
                 _wake_current_worker()
 
     raise last_exc
@@ -97,45 +110,92 @@ def _as_utc(value):
     return dt.astimezone(timezone.utc)
 
 
-def _catch_up_bottle(bottle, account_id=None):
-    if bottle is None:
-        return None
-
-    if bottle.get("opened"):
-        return bottle
-
-    if bottle.get("status") != "drifting":
-        return bottle
-
+def _catchup_hours(bottle):
+    if not bottle or bottle.get("opened") or bottle.get("status") != "drifting":
+        return 0
     current_value = bottle.get("current_time")
     if not current_value:
-        return bottle
-
+        return 0
     try:
         journey_time = _as_utc(current_value)
     except (TypeError, ValueError):
-        return bottle
+        return 0
+    elapsed_hours = int((datetime.now(timezone.utc) - journey_time).total_seconds() // 3600)
+    return min(max(0, (elapsed_hours // 6) * 6), 24)
 
-    now = datetime.now(timezone.utc)
-    elapsed_hours = int((now - journey_time).total_seconds() // 3600)
-    catchup_hours = (elapsed_hours // 6) * 6
 
-    if catchup_hours <= 0:
-        return bottle
+def _catchup_key(bottle):
+    return (
+        storage.account_id_for(bottle),
+        storage.month_key_for(bottle),
+    )
 
-    catchup_hours = min(catchup_hours, 24)
+
+def _run_catchup_in_background(account_id, month_key, bottle_id):
+    key = (account_id, month_key)
+    try:
+        # Bypass the decorated loader to avoid spawning another task.
+        original = _original_load_bottle(account_id, month_key)
+        if not original or original.get("bottle_id") != bottle_id:
+            return
+
+        hours = _catchup_hours(original)
+        if not hours:
+            return
+
+        updated = copy.deepcopy(original)
+        for _ in range(hours // 6):
+            if updated.get("opened") or updated.get("status") != "drifting":
+                break
+            # Compute in memory; never publish partially advanced state.
+            engine.update_bottle(updated, hours=6, persist=False)
+
+        if updated != original:
+            # Atomic compare-and-save: don't clobber actions made during simulation.
+            if not storage.save_bottle_if_unchanged(updated, original):
+                print("Bottle catch-up postponed: newer saved bottle state detected.")
+    except Exception as exc:
+        print(f"Bottle catch-up postponed: {exc}")
+    finally:
+        with _CATCHUP_LOCK:
+            _CATCHUP_PENDING.discard(key)
+
+
+def _schedule_catchup(bottle):
+    if not bottle or _catchup_hours(bottle) == 0:
+        return
+
+    key = _catchup_key(bottle)
+    now = time.monotonic()
+    with _CATCHUP_LOCK:
+        if key in _CATCHUP_PENDING or len(_CATCHUP_PENDING) >= _MAX_CATCHUP_PENDING:
+            return
+        last_attempt = _CATCHUP_LAST_ATTEMPT.get(key, 0.0)
+        if now - last_attempt < _CATCHUP_COOLDOWN_SECONDS:
+            return
+        # Keep old account keys from accumulating indefinitely.
+        if len(_CATCHUP_LAST_ATTEMPT) > 2048:
+            _CATCHUP_LAST_ATTEMPT.clear()
+        _CATCHUP_LAST_ATTEMPT[key] = now
+        _CATCHUP_PENDING.add(key)
 
     try:
-        engine.advance_bottle(
-            bottle,
-            total_hours=catchup_hours,
-            step_hours=6,
+        _CATCHUP_EXECUTOR.submit(
+            _run_catchup_in_background,
+            key[0],
+            key[1],
+            bottle.get("bottle_id"),
         )
-        storage.save_bottle(bottle)
-    except Exception as exc:
-        print(f"Bottle catch-up skipped: {exc}")
+    except RuntimeError:
+        with _CATCHUP_LOCK:
+            _CATCHUP_PENDING.discard(key)
 
-    return bottle
+
+def _journey_sync_status(bottle):
+    if not bottle or _catchup_hours(bottle) == 0:
+        return "up_to_date"
+    with _CATCHUP_LOCK:
+        return "updating" if _catchup_key(bottle) in _CATCHUP_PENDING else "update_delayed"
 
 
 def _all_stored_bottles(exclude_account_id=None):
@@ -327,6 +387,9 @@ def _wrap_bottle_get(func):
         if bottle is not None:
             result["reply_message"] = bottle.get("reply_message")
             result["reply_time"] = bottle.get("reply_time")
+            # Optional fields for the iOS main-page status display.
+            result["journey_sync_status"] = _journey_sync_status(bottle)
+            result["journey_position_as_of"] = bottle.get("current_time")
 
         return result
 
@@ -344,7 +407,6 @@ if storage is not None:
 
     def load_bottle_with_catchup(account_id=None, month_key=None):
         bottle = _original_load_bottle(account_id, month_key)
-        bottle = _catch_up_bottle(bottle, account_id=account_id)
 
         if (
             bottle is not None
@@ -359,6 +421,8 @@ if storage is not None:
             except Exception as exc:
                 print(f"Test reply save skipped: {exc}")
 
+        # Return saved status immediately, even if the currents worker is slow.
+        _schedule_catchup(bottle)
         return bottle
 
     storage.load_bottle = load_bottle_with_catchup
