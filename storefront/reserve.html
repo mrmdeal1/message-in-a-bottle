@@ -24,6 +24,27 @@ body{background:linear-gradient(rgba(7,5,3,.66),rgba(7,5,3,.9)),url("assets/vici
 .note{text-align:center;margin-top:24px;color:#c9b58f;font-size:14px}
 @media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.wrap{padding:18px 14px 40px}.brand{font-size:12px;text-align:right}.grid{grid-template-columns:1fr}.card{min-height:210px}}
+
+/* A quiet brass invitation: one brief glow roughly every five seconds. */
+.limited-callout{margin:2px auto 25px;text-align:center}
+.limited-callout .limited-cta{
+  display:inline-block;max-width:100%;padding:13px 20px;
+  text-align:center;line-height:1.5;white-space:normal;
+  animation:limited-brass-glow 5.2s ease-in-out infinite;
+}
+@keyframes limited-brass-glow{
+  0%,55%,100%{border-color:rgba(216,178,107,.72);background:rgba(10,8,5,.7);box-shadow:0 0 0 rgba(216,178,107,0)}
+  70%{border-color:rgba(241,207,145,.98);background:rgba(40,29,16,.93);box-shadow:0 0 19px rgba(216,178,107,.23),inset 0 0 8px rgba(216,178,107,.06)}
+  84%{border-color:rgba(216,178,107,.76);background:rgba(16,11,6,.8);box-shadow:0 0 6px rgba(216,178,107,.08)}
+}
+.limited-callout .limited-cta:hover,
+.limited-callout .limited-cta:focus-visible{
+  animation-play-state:paused;
+  color:var(--cream);background:rgba(40,29,16,.95);
+  box-shadow:0 0 20px rgba(216,178,107,.2);
+  outline:2px solid var(--brass);outline-offset:3px;
+}
+@media(prefers-reduced-motion:reduce){.limited-callout .limited-cta{animation:none}}
 </style>
 </head>
 <body><main class="wrap">
@@ -33,6 +54,6 @@ body{background:linear-gradient(rgba(7,5,3,.66),rgba(7,5,3,.9)),url("assets/vici
 <a class="card" href="https://vicissitude-private.printful.me/product/vicissitude-private-reserve-sextant-edition-short-t" target="_blank" rel="noopener"><div class="mark">✦</div><h2>Vicissitude Private Reserve — Sextant Edition Short-T</h2><div class="price">From $35.00</div></a>
 <a class="card" href="https://vicissitude-private.printful.me/product/vintage-cotton-tvicissitude-private-reserve-sextant-capwill-cap" target="_blank" rel="noopener"><div class="mark">✦</div><h2>Vintage Cotton Twill Vicissitude Private Reserve Sextant Cap</h2><div class="price">From $40.00</div></a>
 </section>
-<div class="note" style="margin:2px auto 25px"><a class="back" href="limited-run.html">Shop V with a Tude Limited Run — Sea Snake &amp; Surfing Bottle →</a></div>
+<div class="limited-callout"><a class="back limited-cta" href="limited-run.html">Shop V with a Tude Limited Run — Sea Snake &amp; Surfing Bottle →</a></div>
 <p class="note">Tap any product to shop the live Vicissitude store. Individual product links can be added next.</p>
 </main></body></html>
