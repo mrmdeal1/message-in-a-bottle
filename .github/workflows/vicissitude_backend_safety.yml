@@ -1,0 +1,26 @@
+name: Vicissitude backend safety
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'current_worker_server.py'
+      - 'sitecustomize.py'
+      - 'storage.py'
+      - 'tests/test_current_worker_memory_safety.py'
+      - '.github/workflows/vicissitude_backend_safety.yml'
+
+jobs:
+  backend-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check Python syntax
+        run: python -m py_compile current_worker_server.py sitecustomize.py storage.py
+      - name: Install minimal test dependencies
+        run: python -m pip install fastapi
+      - name: Test current-worker memory guard
+        run: python -m unittest discover -s tests -p 'test_current_worker_memory_safety.py' -v
