@@ -2,10 +2,29 @@ import json
 import os
 import subprocess
 import sys
+from threading import BoundedSemaphore
 
 from fastapi import FastAPI, HTTPException
 
-app = FastAPI(title="Message in a Bottle Current Worker", version="0.3.1")
+app = FastAPI(title="Message in a Bottle Current Worker", version="0.3.2")
+
+# Each lookup can launch a memory-heavy Copernicus subprocess. Render's
+# 512 MiB worker must never run more than one at once.
+_heavy_job_slot = BoundedSemaphore(value=1)
+
+
+def _run_single_heavy_job(*args, **kwargs):
+    if not _heavy_job_slot.acquire(blocking=False):
+        raise HTTPException(
+            status_code=503,
+            detail="Ocean-current calculation is busy. Retry shortly.",
+            headers={"Retry-After": "15"},
+        )
+    try:
+        return subprocess.run(*args, **kwargs)
+    finally:
+        _heavy_job_slot.release()
+
 
 
 @app.get("/health")
@@ -19,7 +38,7 @@ def current(lat: float, lon: float, date: str):
     env["MIAB_COPERNICUS_CHILD"] = "1"
 
     try:
-        result = subprocess.run(
+        result = _run_single_heavy_job(
             [
                 sys.executable,
                 "copernicus_lookup.py",
@@ -34,6 +53,8 @@ def current(lat: float, lon: float, date: str):
             check=True,
             env=env,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Copernicus child failed: {exc}") from exc
 
@@ -72,7 +93,7 @@ def annual(bottle: dict):
     env["MIAB_COPERNICUS_CHILD"] = "1"
 
     try:
-        result = subprocess.run(
+        result = _run_single_heavy_job(
             [sys.executable, "annual_simulator_fast.py"],
             input=json.dumps(bottle),
             capture_output=True,

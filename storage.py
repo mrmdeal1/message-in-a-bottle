@@ -158,6 +158,59 @@ def save_bottle(bottle):
             )
 
 
+
+def save_bottle_if_unchanged(bottle, expected):
+    """Save one completed simulation only if its original state is still current.
+
+    Do not let a background movement task overwrite a purchase, bottle opening,
+    reply, or other newer update. The comparison and write share a DB lock.
+    """
+    account_id = account_id_for(expected)
+    month_key = month_key_for(expected)
+
+    if not database_enabled():
+        current = load_bottle(account_id, month_key)
+        if current != expected:
+            return False
+        save_bottle(bottle)
+        return True
+
+    state = dict(bottle)
+    state.pop("_storage_account_id", None)
+    state.pop("_storage_month_key", None)
+    state.setdefault("launch_month_key", month_key)
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT state FROM bottles
+                WHERE account_id = %s AND month_key = %s
+                FOR UPDATE
+                """,
+                (account_id, month_key),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return False
+
+            current = dict(row[0])
+            attach_account(current, account_id, month_key)
+            if current != expected:
+                return False
+
+            cur.execute(
+                """
+                UPDATE bottles
+                SET state = %s, bottle_id = %s, updated_at = NOW()
+                WHERE account_id = %s AND month_key = %s
+                """,
+                (Jsonb(state), bottle["bottle_id"], account_id, month_key),
+            )
+
+    return True
+
+
 def load_bottle(account_id=None, month_key=None):
     if not database_enabled():
         if not os.path.exists(SAVE_FILE):
