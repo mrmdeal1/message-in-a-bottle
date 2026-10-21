@@ -4,7 +4,8 @@ from typing import Optional
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from appstoreserverlibrary.models.Environment import Environment
@@ -18,6 +19,20 @@ import storage
 
 
 app = FastAPI(title="Message in a Bottle API", version="0.1.0")
+
+
+@app.middleware("http")
+async def block_public_test_endpoints(request: Request, call_next):
+    """Protect the live service from developer-only test routes.
+
+    The verified Apple review account uses /api/beach-walk/find instead.
+    """
+    if request.url.path.startswith("/api/test/"):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Development test endpoints are disabled."},
+        )
+    return await call_next(request)
 ANNUAL_WORKER_URL = "https://message-in-a-bottle-currents.onrender.com/annual"
 
 APPLE_BUNDLE_ID = "com.nobudgetinternational.VwithaTUDE"
