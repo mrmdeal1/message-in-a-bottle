@@ -5,6 +5,7 @@ from fastapi import Body, HTTPException
 import auth_support
 import bottle_engine as engine
 import storage
+import beach_walk as beach_rules
 
 try:
     import sitecustomize as legacy_support
@@ -58,6 +59,45 @@ def _init_build4_tables():
                 """
             )
 
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS beach_walk_attempts (
+                    account_id TEXT NOT NULL,
+                    walk_day DATE NOT NULL,
+                    attempt_count INTEGER NOT NULL,
+                    last_attempt TIMESTAMPTZ NOT NULL,
+                    PRIMARY KEY (account_id, walk_day)
+                )
+                """
+            )
+
+
+def _claim_beach_walk(account_id):
+    """Atomically allow at most three walks per UTC day, >=10 minutes apart.
+
+    The iPhone continues handling its existing walk timer. These server-side
+    limits prevent rapid repeated find requests without changing the API.
+    """
+    now = datetime.now(timezone.utc)
+    with storage._connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO beach_walk_attempts (
+                    account_id, walk_day, attempt_count, last_attempt
+                ) VALUES (%s, %s, 1, %s)
+                ON CONFLICT (account_id, walk_day) DO UPDATE SET
+                    attempt_count = beach_walk_attempts.attempt_count + 1,
+                    last_attempt = EXCLUDED.last_attempt
+                WHERE beach_walk_attempts.attempt_count < %s
+                  AND beach_walk_attempts.last_attempt <=
+                      EXCLUDED.last_attempt - INTERVAL '10 minutes'
+                RETURNING attempt_count
+                """,
+                (account_id, now.date(), now, beach_rules.DAILY_WALK_LIMIT),
+            )
+            return cur.fetchone() is not None
+
 
 def _account_from_token(token):
     if not isinstance(token, str) or not token:
@@ -109,11 +149,20 @@ def _eligible_bottle_for(account_id):
     if legacy_support is None:
         return None, None
 
+    # A normal walk must never be a guaranteed find.
+    if not beach_rules.bottle_find_roll():
+        return None, None
+
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
     for found_account_id, bottle in legacy_support._all_stored_bottles(
         exclude_account_id=account_id
     ):
+        # Seeded review and development bottles must not enter the public pool.
+        if found_account_id == "demo-account" or found_account_id.startswith(
+            ("beach-test-", "ios-test-")
+        ):
+            continue
         if is_blocked(account_id, found_account_id):
             continue
         if bottle.get("status") != "ashore":
@@ -122,12 +171,15 @@ def _eligible_bottle_for(account_id):
             continue
         if not bottle.get("finder_eligible", True):
             continue
+        if bottle.get("moderated_removed"):
+            continue
 
         try:
             if not engine.bottle_is_mature(bottle, check_time=now):
                 continue
         except Exception:
-            pass
+            # A malformed or uncheckable bottle is not eligible for discovery.
+            continue
 
         return found_account_id, bottle
 
@@ -154,6 +206,7 @@ def _delete_account(account_id):
                 (account_id,),
             )
             cur.execute("DELETE FROM account_sessions WHERE account_id = %s", (account_id,))
+            cur.execute("DELETE FROM beach_walk_attempts WHERE account_id = %s", (account_id,))
             cur.execute("DELETE FROM users WHERE account_id = %s", (account_id,))
 
     return {"ok": True, "deleted": True}
@@ -237,6 +290,8 @@ def _find_beach_bottle(account_id):
         found_account_id, bottle = legacy_support._create_test_beach_bottle()
     else:
         _init_build4_tables()
+        if not _claim_beach_walk(account_id):
+            return {"bottle_found": False}
         found_account_id, bottle = _eligible_bottle_for(account_id)
 
     if bottle is None:
