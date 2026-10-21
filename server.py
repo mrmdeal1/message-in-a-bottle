@@ -37,8 +37,10 @@ ANNUAL_WORKER_URL = "https://message-in-a-bottle-currents.onrender.com/annual"
 
 APPLE_BUNDLE_ID = "com.nobudgetinternational.VwithaTUDE"
 APPLE_PRODUCT_ID = "message_in_a_bottle.monthly_bottle"
-APPLE_ENVIRONMENT = Environment.SANDBOX
-APPLE_APP_ID = None
+# App Store release: https://apps.apple.com/us/app/vicissitude/id6819033665
+# StoreKit JWS transactions from the live app are Production transactions.
+APPLE_ENVIRONMENT = Environment.PRODUCTION
+APPLE_APP_ID = 6819033665
 APPLE_ROOT_CERT_DIR = "apple_root_certs"
 
 def load_apple_root_certificates():
