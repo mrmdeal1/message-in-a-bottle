@@ -4,7 +4,7 @@ from typing import Optional
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request as FastAPIRequest
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -22,7 +22,7 @@ app = FastAPI(title="Message in a Bottle API", version="0.1.0")
 
 
 @app.middleware("http")
-async def block_public_test_endpoints(request: Request, call_next):
+async def block_public_test_endpoints(request: FastAPIRequest, call_next):
     """Protect the live service from developer-only test routes.
 
     The verified Apple review account uses /api/beach-walk/find instead.
