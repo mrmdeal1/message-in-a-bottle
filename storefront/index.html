@@ -4,12 +4,29 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Vicissitude General Store</title>
+<meta name="theme-color" content="#171419">
 <style>
-html,body{margin:0;width:100%;height:100%;background:#26170d;overflow:hidden}
-.stage{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;isolation:isolate}
-.stage::before{content:"";position:absolute;inset:-54px;background:url("assets/vicissitude_store_master.jpg") center/cover no-repeat;filter:blur(38px) brightness(.50) saturate(.88);pointer-events:none;z-index:0}
-.art{position:relative;z-index:1;display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;transform:scale(1.08);transform-origin:center center}
-.hotspot{position:absolute;z-index:2;display:block;background:transparent;border:0;cursor:pointer;appearance:none;-webkit-appearance:none;overflow:hidden;text-decoration:none}
+/* Seasonal storefront backdrop — Halloween. Store art and navigation stay untouched. */
+html,body{margin:0;width:100%;height:100%;background:#171419;overflow:hidden}
+.stage{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;isolation:isolate;background:
+radial-gradient(ellipse at 5% 34%,rgba(149,86,40,.28),transparent 36%),
+radial-gradient(ellipse at 95% 27%,rgba(95,62,92,.25),transparent 41%),
+linear-gradient(115deg,#10171a 0%,#2b211e 48%,#11131b 100%)}
+.stage::before{content:"";position:absolute;inset:-54px;background:url("assets/vicissitude_store_master.jpg") center/cover no-repeat;filter:blur(42px) brightness(.35) sepia(.18) saturate(.70);opacity:.72;pointer-events:none;z-index:0}
+.stage::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:
+radial-gradient(circle at 88% 15%,rgba(234,202,146,.17) 0%,rgba(179,139,88,.06) 5.5%,transparent 13%),
+radial-gradient(ellipse at 0% 76%,rgba(174,106,56,.18),transparent 40%),
+radial-gradient(ellipse at 100% 76%,rgba(93,93,110,.18),transparent 41%);
+box-shadow:inset 0 0 92px rgba(7,8,12,.47)}
+.halloween-tracery{position:absolute;z-index:1;inset:0;width:100%;height:100%;pointer-events:none;opacity:.46}
+.halloween-mist{position:absolute;z-index:1;bottom:-25%;left:-15%;width:130%;height:68%;pointer-events:none;background:
+radial-gradient(ellipse at 16% 52%,rgba(190,177,162,.17),transparent 38%),
+radial-gradient(ellipse at 85% 58%,rgba(137,144,161,.15),transparent 37%);
+filter:blur(27px);animation:halloween-drift 23s ease-in-out infinite alternate}
+@keyframes halloween-drift{from{transform:translateX(-3%) translateY(1%);opacity:.5}to{transform:translateX(3%) translateY(-4%);opacity:.82}}
+@media(prefers-reduced-motion:reduce){.halloween-mist{animation:none}}
+.art{position:relative;z-index:2;display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;transform:scale(1.08);transform-origin:center center}
+.hotspot{position:absolute;z-index:3;display:block;background:transparent;border:0;cursor:pointer;appearance:none;-webkit-appearance:none;overflow:hidden;text-decoration:none}
 .hotspot:focus{outline:none}
 .hotspot::after{content:attr(data-label);position:absolute;left:50%;bottom:8%;transform:translateX(-50%) translateY(8px);padding:.65rem 1.15rem;border:1px solid rgba(201,155,82,.9);border-radius:999px;background:rgba(10,8,5,.76);color:#d8b26b;font:700 clamp(14px,1.45vw,21px)/1.1 Georgia,serif;letter-spacing:.05em;white-space:nowrap;opacity:0;transition:opacity .22s ease,transform .22s ease,box-shadow .22s ease;text-shadow:0 1px 2px #000;box-shadow:0 0 0 rgba(216,178,107,0)}
 .hotspot:hover::after,.hotspot:focus-visible::after{opacity:1;transform:translateX(-50%) translateY(0);box-shadow:0 0 18px rgba(216,178,107,.32)}
@@ -30,6 +47,17 @@ html,body{margin:0;width:100%;height:100%;background:#26170d;overflow:hidden}
 </head>
 <body>
 <div class="stage">
+<!-- Restrained Victorian branch silhouettes; hidden behind the approved store artwork. -->
+<svg class="halloween-tracery" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+  <g fill="none" stroke="#8c7156" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-15 885 Q93 745 148 611 Q170 548 176 452 M104 722 Q76 657 28 625 M141 638 Q204 602 236 527 M173 506 Q116 478 92 412 M59 800 Q109 795 151 746" />
+    <path d="M1615 885 Q1507 745 1452 611 Q1430 548 1424 452 M1496 722 Q1524 657 1572 625 M1459 638 Q1396 602 1364 527 M1427 506 Q1484 478 1508 412 M1541 800 Q1491 795 1449 746" />
+  </g>
+  <g fill="none" stroke="#b38b5b" stroke-width="1.1" opacity=".53">
+    <path d="M13 68 Q57 35 121 40 M29 84 Q78 65 102 82 M1587 68 Q1543 35 1479 40 M1571 84 Q1522 65 1498 82" />
+  </g>
+</svg>
+<div class="halloween-mist" aria-hidden="true"></div>
 <img id="storeArt" class="art" alt="Vicissitude General Store">
 <a class="hotspot left" data-label="The V" aria-label="The V" href="./the-v.html"></a>
 <a class="hotspot center" data-label="Vicissitude Reserve" aria-label="Vicissitude Reserve" href="./reserve.html"></a>
