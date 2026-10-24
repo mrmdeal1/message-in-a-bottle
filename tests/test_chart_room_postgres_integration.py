@@ -148,9 +148,16 @@ class RealDatabaseMovementTests(unittest.TestCase):
                 raise RuntimeError("Test-only simulated currents outage")
             return sample_current(lat, lon, date, hours)
 
+        # The scheduler deliberately rejects any unverified worker patch.
+        # Model a failed remote lookup with a matching worker identity.
         engine.move_bottle_live = flaky_current
-        with self.assertRaisesRegex(RuntimeError, "1 bottle errors"):
-            scheduler.run()
+        worker._move_bottle_live_remote = flaky_current
+        try:
+            with self.assertRaisesRegex(RuntimeError, "1 bottle errors"):
+                scheduler.run()
+        finally:
+            worker._move_bottle_live_remote = sample_current
+            engine.move_bottle_live = sample_current
         saved = self.fetch(account, month)
         self.assertEqual(saved["current_time"], original["current_time"])
         self.assertEqual(saved["total_miles_traveled"], 0.0)
