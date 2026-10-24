@@ -22,3 +22,11 @@ The Swift view has animated golden dots, bottle selection, account-scoped on-dev
 6. Upgrade the database and verify backup/retention; independent of this branch.
 
 No paid Render job was created.
+
+## Live ocean-current smoke test — October 23, 2026
+- GitHub Actions run: https://github.com/mrmdeal1/message-in-a-bottle/actions/runs/40044813160
+- Result: **passed**. The production current-worker `/health` returned 200; read-only `/current` at latitude 25.0, longitude -85.0 and date 2026-10-20 returned finite realistic east/north surface-current components.
+- Read-only `/current` request took about 30 seconds (Render request log: ~30,316 ms). Optimize/budget multiple lookups before enabling cron for every bottle.
+- No customer records were created, updated, or read by this smoke test; no cron job was created.
+- Unit regression tests for the scheduler passed in GitHub Actions run https://github.com/mrmdeal1/message-in-a-bottle/actions/runs/40044639452, including dry run, concurrency, 24h eligibility and error rollback behavior.
+- These checks do **not** constitute an end-to-end scheduled live bottle update through the production database; that still needs separate staging verification.
