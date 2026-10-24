@@ -1,0 +1,42 @@
+name: Chart Room isolated database integration
+
+on:
+  push:
+    branches: [vicissitude-chart-room-v7]
+    paths:
+      - ".github/workflows/chart_room_postgres_integration.yml"
+      - "tests/test_chart_room_postgres_integration.py"
+      - "bottle_daily_scheduler.py"
+      - "bottle_engine.py"
+      - "storage.py"
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: testonly
+          POSTGRES_PASSWORD: isolatedtest
+          POSTGRES_DB: vicissitude_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U testonly -d vicissitude_test"
+          --health-interval 3s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://testonly:isolatedtest@127.0.0.1:5432/vicissitude_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install only required local test libraries
+        run: python -m pip install "psycopg[binary]" pyshp shapely
+      - name: Real movement and route checkpoints through isolated PostgreSQL
+        run: python -I tests/test_chart_room_postgres_integration.py
