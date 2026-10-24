@@ -4,6 +4,7 @@ Runs against stubs only: no database, external ocean-current API, or production
 bottle is accessed. Intentionally uses Python standard library only.
 """
 import importlib.util
+from datetime import datetime
 import os
 from pathlib import Path
 import sys
@@ -152,7 +153,7 @@ class BottleDailySchedulerTests(unittest.TestCase):
         self.storage.save_bottle_if_unchanged = lambda new, old: saved.append(
             (new.copy(), old.copy())
         ) or True
-        with patch.object(self.scheduler, "datetime") as clock:
+        with patch.object(self.scheduler, "datetime", wraps=datetime) as clock:
             clock.now.return_value = self.now
             self.scheduler.run()
 
@@ -173,7 +174,7 @@ class BottleDailySchedulerTests(unittest.TestCase):
             "total_miles_traveled": bottle["total_miles_traveled"] + 1
         })
         self.storage.save_bottle_if_unchanged = lambda new, previous: False
-        with patch.object(self.scheduler, "datetime") as clock:
+        with patch.object(self.scheduler, "datetime", wraps=datetime) as clock:
             clock.now.return_value = self.now
             self.scheduler.run()
         self.assertEqual(old["total_miles_traveled"], 12.0)
@@ -190,7 +191,7 @@ class BottleDailySchedulerTests(unittest.TestCase):
             raise RuntimeError("simulated ocean worker outage")
         self.engine.update_bottle = failing_step
         self.storage.save_bottle_if_unchanged = lambda *args: calls.append(True)
-        with patch.object(self.scheduler, "datetime") as clock:
+        with patch.object(self.scheduler, "datetime", wraps=datetime) as clock:
             clock.now.return_value = self.now
             with self.assertRaisesRegex(RuntimeError, "1 bottle errors"):
                 self.scheduler.run()
@@ -204,7 +205,7 @@ class BottleDailySchedulerTests(unittest.TestCase):
         self.scheduler.DRY_RUN = True
         self.engine.update_bottle = lambda *args, **kwargs: self.fail("moved on dry run")
         self.storage.save_bottle_if_unchanged = lambda *args: self.fail("saved on dry run")
-        with patch.object(self.scheduler, "datetime") as clock:
+        with patch.object(self.scheduler, "datetime", wraps=datetime) as clock:
             clock.now.return_value = self.now
             self.scheduler.run()
 
