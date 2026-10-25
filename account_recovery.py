@@ -132,7 +132,12 @@ def _issue(account_id, address, purpose):
                   AND created_at > NOW() - INTERVAL '1 hour'
             """, (address, purpose))
             count, newest = cur.fetchone()
-            if count >= MAX_SENDS_PER_HOUR or (newest and (datetime.now(timezone.utc)-newest).total_seconds()<45):
+            cur.execute("""
+                SELECT COUNT(*) FROM account_recovery_codes
+                WHERE account_id=%s AND created_at > NOW() - INTERVAL '1 hour'
+            """, (account_id,))
+            account_sends = cur.fetchone()[0]
+            if count >= MAX_SENDS_PER_HOUR or account_sends >= 8 or (newest and (datetime.now(timezone.utc)-newest).total_seconds()<45):
                 if purpose == "reset":
                     return False
                 raise HTTPException(status_code=429, detail="Please wait before requesting another code.")
@@ -215,7 +220,17 @@ def install_recovery_routes(app):
         def recovery_email_request(payload: dict = Body(...)):
             aid = _account(payload.get("auth_token"))
             address = _email(payload.get("email"))
+            current_password = payload.get("current_password")
+            if not isinstance(current_password, str):
+                raise HTTPException(status_code=401, detail="Enter your current password to protect your account.")
+            import auth_support
             _init()
+            with storage._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT password_hash FROM users WHERE account_id=%s", (aid,))
+                    password_row = cur.fetchone()
+            if not password_row or not auth_support._verify_password(current_password, password_row[0]):
+                raise HTTPException(status_code=401, detail="Current password is incorrect.")
             with storage._connect() as conn:
                 with conn.cursor() as cur:
                     cur.execute("SELECT account_id FROM account_recovery_emails WHERE email_normalized=%s", (address,))
