@@ -683,3 +683,7 @@ def install_auth_routes(app):
                     detail="auth_token and signed_transaction are required.",
                 )
             return verify_and_grant_apple_purchase(token, signed_transaction)
+
+    # Version 7 recovery endpoints: separate from released Version 6 routes.
+    from account_recovery import install_recovery_routes
+    install_recovery_routes(app)
