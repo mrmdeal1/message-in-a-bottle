@@ -1,0 +1,46 @@
+name: Chart Room live current smoke test
+
+on:
+  push:
+    branches: [vicissitude-chart-room-v7]
+    paths:
+      - '.github/workflows/chart_room_worker_smoke.yml'
+  workflow_dispatch:
+
+jobs:
+  worker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Read-only current calculation on Render (no bottles or database)
+        shell: python
+        run: |
+          import json, math, urllib.parse, urllib.request
+          from urllib.error import HTTPError
+
+          base = "https://message-in-a-bottle-currents.onrender.com"
+          for url, timeout in [
+              (base + "/health", 120),
+              (base + "/current?" + urllib.parse.urlencode({
+                  "lat": 25.0,
+                  "lon": -85.0,
+                  "date": "2026-10-20",
+              }), 210),
+          ]:
+              request = urllib.request.Request(url, headers={"User-Agent": "VicissitudeReadOnlySmoke/1.0"})
+              try:
+                  with urllib.request.urlopen(request, timeout=timeout) as response:
+                      result = json.loads(response.read())
+                      print("Endpoint:", urllib.parse.urlsplit(url).path, "HTTP:", response.status)
+              except HTTPError as exc:
+                  print("Worker returned HTTP", exc.code, exc.read()[:500])
+                  raise
+              if url.endswith("/health"):
+                  assert result.get("ok") is True, result
+                  print("Worker health: OK")
+              else:
+                  assert "u" in result and "v" in result, result
+                  assert all(math.isfinite(float(result[k])) for k in ("u", "v")), result
+                  assert all(abs(float(result[k])) < 6 for k in ("u", "v")), result
+                  print("Measured current (m/s):", result)
+                  print("READ-ONLY LIVE CURRENT CALCULATION PASSED")

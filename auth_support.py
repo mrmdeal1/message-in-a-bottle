@@ -593,6 +593,74 @@ def install_auth_routes(app):
                 "history": account_history(account_id),
             }
 
+    # Chart Room: one authenticated request for all bottles owned by this account.
+    if "/api/account/chart-room" not in existing:
+        @app.post("/api/account/chart-room")
+        def account_chart_room(payload: dict = Body(...)):
+            token = payload.get("auth_token")
+            if not isinstance(token, str):
+                raise HTTPException(status_code=400, detail="auth_token is required.")
+            account_id = verify_session(token)
+            if account_id is None:
+                raise HTTPException(status_code=401, detail="Session is invalid or expired.")
+
+            bottles = []
+            if storage.database_enabled():
+                with storage._connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            SELECT bottle_id, month_key, state
+                            FROM bottles
+                            WHERE account_id = %s
+                            ORDER BY month_key DESC
+                            """,
+                            (account_id,),
+                        )
+                        rows = cur.fetchall()
+
+                for bottle_id, month_key, state in rows:
+                    state = dict(state or {})
+                    # Geographic checkpoints are saved by the movement engine.
+                    # Older bottles might have just a launch or region event:
+                    # those are genuine points, not a reconstructed full route.
+                    points = state.get("route_points") or []
+                    if not points:
+                        points = [
+                            {
+                                "latitude": event["latitude"],
+                                "longitude": event["longitude"],
+                                "time": event.get("time"),
+                            }
+                            for event in state.get("journey_history", [])
+                            if isinstance(event.get("latitude"), (int, float))
+                            and isinstance(event.get("longitude"), (int, float))
+                        ]
+                    safe_points = [
+                        {
+                            "latitude": float(pt["latitude"]),
+                            "longitude": float(pt["longitude"]),
+                            "time": pt.get("time"),
+                        }
+                        for pt in points
+                        if isinstance(pt, dict)
+                        and isinstance(pt.get("latitude"), (int, float))
+                        and isinstance(pt.get("longitude"), (int, float))
+                        and -90 <= float(pt["latitude"]) <= 90
+                        and -180 <= float(pt["longitude"]) <= 180
+                    ]
+                    areas = list(state.get("journey_areas") or [])
+                    bottles.append({
+                        "bottle_id": bottle_id,
+                        "month_key": month_key,
+                        "location": areas[-1] if areas else "Open Ocean",
+                        "outcome": _history_outcome(state),
+                        "miles": round(float(state.get("total_miles_traveled") or 0), 2),
+                        "points": safe_points,
+                    })
+
+            return {"ok": True, "account_id": account_id, "bottles": bottles}
+
     if "/api/account/purchase-status" not in existing:
         @app.post("/api/account/purchase-status")
         def account_purchase_status(payload: dict = Body(...)):
@@ -615,3 +683,7 @@ def install_auth_routes(app):
                     detail="auth_token and signed_transaction are required.",
                 )
             return verify_and_grant_apple_purchase(token, signed_transaction)
+
+    # Version 7 recovery endpoints: separate from released Version 6 routes.
+    from account_recovery import install_recovery_routes
+    install_recovery_routes(app)

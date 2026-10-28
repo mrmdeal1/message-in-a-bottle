@@ -1968,3 +1968,68 @@ def update_bottle(
     return bottle
 
 
+
+
+# MARK: - Chart Room geographic checkpoints (Version 7)
+# Store actual simulated positions. Never invent a path between historical events.
+_original_update_bottle_for_chart_room = update_bottle
+
+def update_bottle(
+    bottle,
+    hours=6,
+    encounter_chance=0.06,
+    persist=True,
+    storm_level=None,
+):
+    before = {
+        "latitude": bottle.get("latitude"),
+        "longitude": bottle.get("longitude"),
+        "time": bottle.get("current_time"),
+        "status": bottle.get("status"),
+    }
+    result = _original_update_bottle_for_chart_room(
+        bottle,
+        hours=hours,
+        encounter_chance=encounter_chance,
+        persist=False,
+        storm_level=storm_level,
+    )
+
+    # A migrated bottle may have no previous checkpoints. Preserve any real
+    # recorded launch point as the first point, not a fabricated history.
+    points = result.setdefault("route_points", [])
+    if not points:
+        launch = next(
+            (e for e in result.get("journey_history", [])
+             if e.get("event") == "launched"
+             and isinstance(e.get("latitude"), (int, float))
+             and isinstance(e.get("longitude"), (int, float))),
+            None,
+        )
+        if launch is not None:
+            points.append({
+                "latitude": float(launch["latitude"]),
+                "longitude": float(launch["longitude"]),
+                "time": launch.get("time"),
+            })
+
+    after_lat = result.get("latitude")
+    after_lon = result.get("longitude")
+    after_time = result.get("current_time")
+    changed = (
+        after_lat != before["latitude"]
+        or after_lon != before["longitude"]
+        or result.get("status") != before["status"]
+    )
+    if changed and isinstance(after_lat, (int, float)) and isinstance(after_lon, (int, float)):
+        latest = {
+            "latitude": float(after_lat),
+            "longitude": float(after_lon),
+            "time": after_time,
+        }
+        if not points or any(points[-1].get(k) != latest[k] for k in ("latitude", "longitude", "time")):
+            points.append(latest)
+
+    if persist:
+        save_bottle(result)
+    return result
