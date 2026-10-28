@@ -649,6 +649,28 @@ def install_auth_routes(app):
                         and -90 <= float(pt["latitude"]) <= 90
                         and -180 <= float(pt["longitude"]) <= 180
                     ]
+                    # Older bottles may have only one recorded launch point.
+                    # Expose the real, saved current position as a final chart
+                    # checkpoint, without modifying persisted journey history.
+                    # This gives the iOS V7 renderer two authentic observations
+                    # when both launch and current positions exist.
+                    current_lat = state.get("latitude")
+                    current_lon = state.get("longitude")
+                    if (
+                        isinstance(current_lat, (int, float))
+                        and not isinstance(current_lat, bool)
+                        and isinstance(current_lon, (int, float))
+                        and not isinstance(current_lon, bool)
+                        and -90 <= current_lat <= 90
+                        and -180 <= current_lon <= 180
+                    ):
+                        current_point = {
+                            "latitude": float(current_lat),
+                            "longitude": float(current_lon),
+                            "time": state.get("current_time"),
+                        }
+                        if not safe_points or safe_points[-1] != current_point:
+                            safe_points.append(current_point)
                     areas = list(state.get("journey_areas") or [])
                     bottles.append({
                         "bottle_id": bottle_id,
