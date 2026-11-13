@@ -74,7 +74,7 @@ class CopernicusValidityTests(unittest.TestCase):
         ds = sample_grid([[float("nan"), 0.25], [0.19, 0.21]],
                          [[float("nan"), -0.07], [-0.02, 0.03]])
         output = io.StringIO()
-        with patch.object(lookup.copernicusmarine, "open_dataset", return_value=ds), \
+        with patch.object(lookup.copernicusmarine, "open_dataset", return_value=ds, create=True), \
                 patch.object(sys, "argv", ["copernicus_lookup.py", "25", "-85", "2026-11-12", "1"]), \
                 contextlib.redirect_stdout(output):
             lookup.main()
