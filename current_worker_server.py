@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import subprocess
 import sys
@@ -55,6 +56,15 @@ def current(lat: float, lon: float, date: str):
         )
     except HTTPException:
         raise
+    except subprocess.CalledProcessError as exc:
+        if "No usable finite ocean current" in (exc.stderr or ""):
+            raise HTTPException(
+                status_code=422,
+                detail="No measured ocean current available near these coordinates.",
+            ) from exc
+        raise HTTPException(status_code=502, detail="Copernicus lookup failed.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="Copernicus lookup timed out.") from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Copernicus child failed: {exc}") from exc
 
@@ -71,20 +81,22 @@ def current(lat: float, lon: float, date: str):
             detail="Copernicus child returned no JSON result. " + result.stderr[-500:],
         )
 
-    payload = json.loads(payload_line)
+    try:
+        payload = json.loads(payload_line)
+        latitude = float(payload["latitude"])
+        longitude = float(payload["longitude"])
+        if not all(math.isfinite(value) for value in (latitude, longitude, lat, lon)):
+            raise ValueError("Non-finite ocean-current position")
+        seconds = 3600.0
+        north_m = (latitude - lat) * 111320.0
+        east_m = (longitude - lon) * (111320.0 * math.cos(math.radians(lat)))
+        u, v = east_m / seconds, north_m / seconds
+        if not all(math.isfinite(value) for value in (u, v)):
+            raise ValueError("Non-finite ocean-current vector")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="Invalid Copernicus current result.") from exc
 
-    import math
-
-    seconds = 3600.0
-    north_m = (float(payload["latitude"]) - lat) * 111320.0
-    east_m = (
-        float(payload["longitude"]) - lon
-    ) * (111320.0 * math.cos(math.radians(lat)))
-
-    return {
-        "u": east_m / seconds,
-        "v": north_m / seconds,
-    }
+    return {"u": u, "v": v}
 
 
 @app.post("/annual")
