@@ -2,7 +2,7 @@ name: Chart Room live current smoke test
 
 on:
   push:
-    branches: [vicissitude-chart-room-v7]
+    branches: [verify/vicissitude-live-current-2026-11-12]
     paths:
       - '.github/workflows/chart_room_worker_smoke.yml'
   workflow_dispatch:
@@ -44,3 +44,30 @@ jobs:
                   assert all(abs(float(result[k])) < 6 for k in ("u", "v")), result
                   print("Measured current (m/s):", result)
                   print("READ-ONLY LIVE CURRENT CALCULATION PASSED")
+
+      - name: Read-only regression for the previously failing coastal grid cell
+        shell: python
+        run: |
+          import json, math, urllib.parse, urllib.request
+          from urllib.error import HTTPError
+          base = "https://message-in-a-bottle-currents.onrender.com/current"
+          url = base + "?" + urllib.parse.urlencode({
+              "lat": 18.083414769595773,
+              "lon": -73.81057284518377,
+              "date": "2026-11-01",
+          })
+          request = urllib.request.Request(url, headers={"User-Agent": "VicissitudeCurrentRegression/1.0"})
+          try:
+              with urllib.request.urlopen(request, timeout=210) as response:
+                  data = json.loads(response.read())
+                  assert response.status == 200, response.status
+                  assert math.isfinite(float(data["u"])) and math.isfinite(float(data["v"])), data
+                  print("Previously failing coastal point now returns finite measured current:", data)
+          except HTTPError as error:
+              details = error.read().decode("utf-8", errors="replace")
+              print("Coastal current status:", error.code, details[:500])
+              # A masked coastal cell may have no suitable data; this is
+              # acceptable only when rejected explicitly rather than crashing.
+              assert error.code == 422, (error.code, details)
+              assert "No measured ocean current" in details, details
+              print("No nearby measured current: clean 422, no NaN / 500.")
