@@ -198,6 +198,35 @@ class BottleDailySchedulerTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertEqual(old["total_miles_traveled"], 12.0)
 
+    def test_one_invalid_current_does_not_cancel_other_bottles(self):
+        bad = self.bottle("2026-10-21T12:00:00+00:00")
+        good = self.bottle("2026-10-21T12:00:00+00:00")
+        self.scheduler._candidate_bottles = lambda conn: [
+            ("acct-one", "2026-10", "bad-bottle", bad),
+            ("acct-two", "2026-10", "good-bottle", good),
+        ]
+        self.scheduler.DRY_RUN = False
+        saved = []
+
+        def advance(bottle, hours, persist):
+            if bottle.get("_storage_account_id") == "acct-one":
+                bottle["total_miles_traveled"] = 9999
+                raise RuntimeError("Invalid coastal current")
+            bottle["total_miles_traveled"] += 1
+            return bottle
+
+        self.engine.update_bottle = advance
+        self.storage.save_bottle_if_unchanged = (
+            lambda new, old: saved.append((new.copy(), old.copy())) or True
+        )
+        with patch.object(self.scheduler, "datetime", wraps=datetime) as clock:
+            clock.now.return_value = self.now
+            # Partial success is not a failed cron run.
+            self.scheduler.run()
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0][0]["total_miles_traveled"], 16.0)
+        self.assertEqual(bad["total_miles_traveled"], 12.0)
+
     def test_dry_run_never_calculates_or_saves(self):
         self.scheduler._candidate_bottles = lambda conn: [
             ("acct-one", "2026-10", "bottle-one", self.bottle())
