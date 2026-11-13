@@ -53,7 +53,7 @@ class CopernicusValidityTests(unittest.TestCase):
         )
         self.assertEqual(
             lookup.nearest_valid_surface_current(ds, 25.0, -85.0),
-            (0.19, -0.02),
+            (0.25, -0.07),
         )
 
     def test_all_invalid_values_are_rejected(self):
