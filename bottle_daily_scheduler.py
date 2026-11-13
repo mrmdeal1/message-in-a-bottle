@@ -128,7 +128,12 @@ def run():
     LOGGER.info("Complete: scanned=%s advanced=%s skipped=%s errors=%s dry_run=%s",
                 scanned, advanced, skipped, errors, DRY_RUN)
     if errors:
-        raise RuntimeError(f"Scheduled movement had {errors} bottle errors")
+        # Individual bottle failures are isolated above. Preserve their saved
+        # state and allow a partially successful batch to finish successfully.
+        # Still report a full current-worker outage as a failed cron run.
+        if advanced == 0 and not DRY_RUN:
+            raise RuntimeError(f"Scheduled movement had {errors} bottle errors")
+        LOGGER.warning("Partial movement success: %s bottle errors; retry next run", errors)
 
 
 if __name__ == "__main__":

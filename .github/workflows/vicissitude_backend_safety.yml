@@ -7,6 +7,8 @@ on:
     branches: [main]
     paths:
       - 'current_worker_server.py'
+      - 'copernicus_lookup.py'
+      - 'tests/test_ocean_current_validity.py'
       - 'sitecustomize.py'
       - 'storage.py'
       - 'bottle_daily_scheduler.py'
@@ -25,11 +27,14 @@ jobs:
         with:
           python-version: '3.12'
       - name: Check Python syntax
-        run: python -m py_compile current_worker_server.py sitecustomize.py storage.py bottle_daily_scheduler.py bottle_engine.py auth_support.py
+        run: python -m py_compile current_worker_server.py copernicus_lookup.py sitecustomize.py storage.py bottle_daily_scheduler.py bottle_engine.py auth_support.py
       - name: Install minimal test dependencies
-        run: python -m pip install fastapi
+        run: python -m pip install fastapi numpy xarray
       - name: Test current-worker memory guard
         run: python -m unittest discover -s tests -p 'test_current_worker_memory_safety.py' -v
 
       - name: Test unattended 24-hour scheduler (stubbed database, no network)
         run: python -m unittest discover -s tests -p 'test_chart_room_scheduler.py' -v
+
+      - name: Test finite ocean-current vectors (mocked dataset; no production calls)
+        run: python -m unittest discover -s tests -p 'test_ocean_current_validity.py' -v
